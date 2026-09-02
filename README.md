@@ -2,7 +2,7 @@
 
 Display-only mise version radar for [Omarchy](https://omarchy.org) Quattro. A bar badge when configured tools are behind latest. Click for a compact table of requested, installed, and latest.
 
-![mise radar on the Omarchy bar](screenshot.png)
+![mise radar on the Omarchy bar](preview.png)
 
 This plugin never upgrades, installs, or writes config.
 
@@ -13,6 +13,14 @@ omarchy plugin add https://github.com/chyld/omarchy-mise-radar.git --enable
 ```
 
 Requires Omarchy Quattro and [mise](https://mise.jdx.dev) on `PATH` or `~/.local/bin/mise`.
+
+## Remove
+
+```sh
+omarchy plugin remove chyld.mise-radar
+```
+
+That deletes the plugin files. It does not change mise or `~/.config/mise/config.toml`.
 
 ## What it shows
 
