@@ -22,7 +22,7 @@ import sys
 import time
 
 EXIT_USAGE = 2
-EXIT_BAD_PATH = 127
+EXIT_BAD_PATH = 126
 EXIT_TIMEOUT = 124
 EXIT_OVERFLOW = 125
 EXIT_SIGNAL = 143
@@ -360,7 +360,14 @@ def copy_stdout(proc, pidfd, max_bytes, deadline, dest=None):
                 continue
         room = max_bytes - copied
         if room <= 0:
-            overflow = True
+            try:
+                extra = os.read(fd, 1)
+            except InterruptedError:
+                continue
+            except OSError:
+                break
+            if extra:
+                overflow = True
             break
         try:
             chunk = os.read(fd, min(CHUNK, room + 1))

@@ -41,24 +41,24 @@ class SuperviseTests(unittest.TestCase):
 
     def test_rejects_relative_mise_path(self):
         proc = run_helper(["5", "1024", "0.1", "usr/bin/mise", "--", "--version"])
-        self.assertEqual(proc.returncode, 127)
+        self.assertEqual(proc.returncode, 126)
 
     def test_rejects_dotdot_mise_path(self):
         proc = run_helper(["5", "1024", "0.1", "/usr/bin/../bin/mise", "--", "--version"])
-        self.assertEqual(proc.returncode, 127)
+        self.assertEqual(proc.returncode, 126)
 
     def test_rejects_untrusted_absolute_path(self):
         proc = run_helper(["5", "1024", "0.1", "/tmp/mise", "--", "--version"])
-        self.assertEqual(proc.returncode, 127)
+        self.assertEqual(proc.returncode, 126)
 
     def test_rejects_non_usr_bin_mise(self):
         proc = run_helper(["5", "1024", "0.1", "/bin/mise", "--", "--version"])
-        self.assertEqual(proc.returncode, 127)
+        self.assertEqual(proc.returncode, 126)
 
     def test_rejects_home_local_bin_mise(self):
         home = os.environ.get("HOME", "/home/chyld")
         proc = run_helper(["5", "1024", "0.1", home + "/.local/bin/mise", "--", "--version"])
-        self.assertEqual(proc.returncode, 127)
+        self.assertEqual(proc.returncode, 126)
 
     def test_is_trusted_mise_only_usr_bin(self):
         self.assertTrue(supervise.is_trusted_mise("/usr/bin/mise"))
@@ -122,6 +122,72 @@ class SuperviseTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         stripped = proc.stdout.strip()
         self.assertTrue(stripped.startswith(b"{") or stripped.startswith(b"["), proc.stdout[:80])
+
+    def test_copy_stdout_exact_cap_is_not_overflow(self):
+        child = subprocess.Popen(
+            [PYTHON, "-c", "import sys; sys.stdout.buffer.write(b'x' * 16)"],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            pidfd = os.pidfd_open(child.pid)
+        except OSError:
+            child.kill()
+            child.wait(timeout=2)
+            self.fail("pidfd_open failed")
+        dest = bytearray()
+        try:
+            overflow, copied = supervise.copy_stdout(
+                child, pidfd, 16, time.monotonic() + 2.0, dest=dest
+            )
+            self.assertFalse(overflow)
+            self.assertEqual(copied, 16)
+            self.assertEqual(bytes(dest), b"x" * 16)
+        finally:
+            try:
+                os.close(pidfd)
+            except OSError:
+                pass
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=2)
+            if child.stdout is not None:
+                child.stdout.close()
+
+    def test_copy_stdout_one_past_cap_is_overflow(self):
+        child = subprocess.Popen(
+            [PYTHON, "-c", "import sys; sys.stdout.buffer.write(b'x' * 17)"],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            pidfd = os.pidfd_open(child.pid)
+        except OSError:
+            child.kill()
+            child.wait(timeout=2)
+            self.fail("pidfd_open failed")
+        dest = bytearray()
+        try:
+            overflow, copied = supervise.copy_stdout(
+                child, pidfd, 16, time.monotonic() + 2.0, dest=dest
+            )
+            self.assertTrue(overflow)
+            self.assertEqual(copied, 16)
+            self.assertEqual(bytes(dest), b"x" * 16)
+        finally:
+            try:
+                os.close(pidfd)
+            except OSError:
+                pass
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=2)
+            if child.stdout is not None:
+                child.stdout.close()
 
     def test_overflow_caps_stdout(self):
         if not os.path.isfile(MISE):

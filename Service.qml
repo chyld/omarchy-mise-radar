@@ -9,7 +9,7 @@ Item {
   readonly property int maxStdoutBytes: 262144
   readonly property int sigTerm: 15
   readonly property int sigKill: 9
-  readonly property int killGraceMs: 1500
+  readonly property int killGraceMs: 5000
   readonly property int lsTimeoutMs: 15000
   readonly property int outdatedTimeoutMs: 45000
   readonly property int qmlBackupSlackMs: 2000
@@ -116,7 +116,7 @@ Item {
     if (exitCode === 0) return ""
     if (exitCode === 124) return "mise " + kind + " timed out"
     if (exitCode === 125) return "mise output exceeded 256KiB"
-    if (exitCode === 127) return root.missingMiseMessage()
+    if (exitCode === 126) return root.missingMiseMessage()
     return "mise " + kind + " failed"
   }
 
@@ -155,6 +155,7 @@ Item {
       root.loading = false
       return
     }
+    root.miseAvailable = true
     root.lsAborted = false
     root.lsRefreshId = root.currentRefreshId
     lsProcess.command = cmd
@@ -218,7 +219,7 @@ Item {
     if (!live) return
     if (root.lsAborted) {
       root.cachedLsJson = {}
-    } else if (exitCode === 127) {
+    } else if (exitCode === 126) {
       root.miseAvailable = false
       root.cachedLsJson = {}
       if (root.errorMessage === "")
@@ -228,8 +229,6 @@ Item {
     } else {
       var parsed = Model.parseJsonObject(output)
       root.cachedLsJson = parsed ? parsed : {}
-      if (exitCode === 0)
-        root.miseAvailable = true
       if (exitCode !== 0 && root.errorMessage === "")
         root.errorMessage = root.describeExit(exitCode, "ls")
     }
@@ -273,6 +272,7 @@ Item {
       root.loading = false
       return
     }
+    root.miseAvailable = true
     root.currentRefreshId += 1
     root.loading = true
     root.errorMessage = ""
@@ -283,7 +283,6 @@ Item {
 
   function requestRefresh() {
     if (root.destroying) return
-    if (!root.miseAvailable) return
     root.runRefresh()
   }
 
@@ -306,9 +305,9 @@ Item {
     running: false
     stdout: StdioCollector {
       id: lsStdout
-      waitForEnd: false
+      waitForEnd: true
       onDataChanged: {
-        if (root.collectorLength(lsStdout) > root.maxStdoutBytes)
+        if (root.collectorLength(lsStdout) >= root.maxStdoutBytes)
           root.onLsOversize()
       }
     }
@@ -345,9 +344,9 @@ Item {
     })
     stdout: StdioCollector {
       id: outdatedStdout
-      waitForEnd: false
+      waitForEnd: true
       onDataChanged: {
-        if (root.collectorLength(outdatedStdout) > root.maxStdoutBytes)
+        if (root.collectorLength(outdatedStdout) >= root.maxStdoutBytes)
           root.onOutdatedOversize()
       }
     }
@@ -377,7 +376,7 @@ Item {
   Timer {
     interval: 4 * 60 * 60 * 1000
     repeat: true
-    running: root.miseAvailable
+    running: true
     onTriggered: root.runRefresh()
   }
 }
