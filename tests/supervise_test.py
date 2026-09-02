@@ -156,6 +156,226 @@ class SuperviseTests(unittest.TestCase):
             if proc.stderr is not None:
                 proc.stderr.close()
 
+    def test_terminate_group_already_exited_does_not_kill_later_session(self):
+        child = subprocess.Popen(
+            [PYTHON, "-c", "pass"],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            pidfd = os.pidfd_open(child.pid)
+        except OSError:
+            child.kill()
+            child.wait(timeout=2)
+            self.fail("pidfd_open failed")
+        sleeper = None
+        try:
+            deadline = time.monotonic() + 2.0
+            exited = False
+            while time.monotonic() < deadline:
+                try:
+                    info = os.waitid(
+                        os.P_PIDFD, pidfd, os.WEXITED | os.WNOHANG | os.WNOWAIT
+                    )
+                except OSError:
+                    info = None
+                if info is not None and getattr(info, "si_pid", 0):
+                    exited = True
+                    break
+                time.sleep(0.01)
+            self.assertTrue(exited, "child did not exit before terminate_group")
+
+            sleeper = subprocess.Popen(
+                [PYTHON, "-c", "import time; time.sleep(30)"],
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            recorded = []
+            real_killpg = os.killpg
+
+            def spy(pgid, sig):
+                recorded.append((pgid, sig))
+                return real_killpg(pgid, sig)
+
+            supervise.os.killpg = spy
+            try:
+                supervise.terminate_group(child, pidfd, 0.2)
+            finally:
+                supervise.os.killpg = real_killpg
+
+            self.assertIsNone(sleeper.poll())
+            os.kill(sleeper.pid, 0)
+            self.assertFalse(
+                any(sig == signal.SIGKILL for _pgid, sig in recorded),
+                recorded,
+            )
+        finally:
+            try:
+                os.close(pidfd)
+            except OSError:
+                pass
+            if sleeper is not None and sleeper.poll() is None:
+                sleeper.kill()
+                sleeper.wait(timeout=2)
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=2)
+
+    def test_terminate_group_pidfd_none_does_not_killpg(self):
+        child = subprocess.Popen(
+            [PYTHON, "-c", "pass"],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        child.wait(timeout=2)
+        sleeper = subprocess.Popen(
+            [PYTHON, "-c", "import time; time.sleep(30)"],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        recorded = []
+        real_killpg = os.killpg
+
+        def spy(pgid, sig):
+            recorded.append((pgid, sig))
+            return real_killpg(pgid, sig)
+
+        supervise.os.killpg = spy
+        try:
+            supervise.terminate_group(child, None, 0.2)
+            self.assertIsNone(sleeper.poll())
+            os.kill(sleeper.pid, 0)
+            self.assertEqual(recorded, [])
+        finally:
+            supervise.os.killpg = real_killpg
+            if sleeper.poll() is None:
+                sleeper.kill()
+            sleeper.wait(timeout=2)
+
+    def test_terminate_group_kills_process_ignoring_sigterm(self):
+        child = subprocess.Popen(
+            [
+                PYTHON,
+                "-c",
+                "import signal, sys, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); sys.stdout.write(\"r\"); sys.stdout.flush(); time.sleep(30)",
+            ],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            pidfd = os.pidfd_open(child.pid)
+        except OSError:
+            child.kill()
+            child.wait(timeout=2)
+            self.fail("pidfd_open failed")
+        try:
+            ready = child.stdout.read(1)
+            self.assertEqual(ready, b"r")
+            start = time.monotonic()
+            supervise.terminate_group(child, pidfd, 0.2)
+            elapsed = time.monotonic() - start
+            self.assertEqual(child.returncode, -signal.SIGKILL)
+            self.assertLess(elapsed, 3.0)
+        finally:
+            try:
+                os.close(pidfd)
+            except OSError:
+                pass
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=2)
+
+    def test_terminate_group_kills_live_descendant_after_leader_exits(self):
+        code = (
+            "import os, signal, time\n"
+            "pid = os.fork()\n"
+            "if pid == 0:\n"
+            "    try:\n"
+            "        os.close(1)\n"
+            "    except OSError:\n"
+            "        pass\n"
+            "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "    time.sleep(30)\n"
+            "    os._exit(0)\n"
+            "os.write(1, str(pid).encode())\n"
+            "try:\n"
+            "    os.close(1)\n"
+            "except OSError:\n"
+            "    pass\n"
+            "os._exit(0)\n"
+        )
+        child = subprocess.Popen(
+            [PYTHON, "-c", code],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            pidfd = os.pidfd_open(child.pid)
+        except OSError:
+            child.kill()
+            child.wait(timeout=2)
+            self.fail("pidfd_open failed")
+        gc_pid = None
+        try:
+            raw = child.stdout.read(32)
+            gc_pid = int(raw.decode().strip())
+            deadline = time.monotonic() + 2.0
+            exited = False
+            while time.monotonic() < deadline:
+                try:
+                    info = os.waitid(
+                        os.P_PIDFD, pidfd, os.WEXITED | os.WNOHANG | os.WNOWAIT
+                    )
+                except OSError:
+                    info = None
+                if info is not None and getattr(info, "si_pid", 0):
+                    exited = True
+                    break
+                time.sleep(0.01)
+            self.assertTrue(exited, "leader did not exit")
+            os.kill(gc_pid, 0)
+            supervise.terminate_group(child, pidfd, 0.2)
+            dead = False
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(gc_pid, 0)
+                except ProcessLookupError:
+                    dead = True
+                    break
+                time.sleep(0.02)
+            if not dead:
+                try:
+                    os.kill(gc_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                self.fail("descendant still alive after terminate_group")
+        finally:
+            try:
+                os.close(pidfd)
+            except OSError:
+                pass
+            if gc_pid is not None:
+                try:
+                    os.kill(gc_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=2)
+
 
 if __name__ == "__main__":
     unittest.main()
