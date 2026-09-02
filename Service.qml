@@ -6,7 +6,9 @@ import "Model.js" as Model
 Item {
   id: root
 
+  readonly property int producerMaxStdoutBytes: 261120
   readonly property int maxStdoutBytes: 262144
+  readonly property int panelRefreshMinMs: 60000
   readonly property int sigTerm: 15
   readonly property int sigKill: 9
   readonly property int killGraceMs: 5000
@@ -35,6 +37,7 @@ Item {
   property var toolRows: []
   property int outdatedCount: 0
   property string lastChecked: ""
+  property double lastRefreshAt: 0
 
   property var cachedLsJson: null
   property var cachedOutdatedJson: null
@@ -72,7 +75,7 @@ Item {
       root.python3Path,
       root.supervisePath,
       String(timeoutSec),
-      String(root.maxStdoutBytes),
+      String(root.producerMaxStdoutBytes),
       root.killGraceSec,
       "/usr/bin/mise",
       "--"
@@ -155,7 +158,6 @@ Item {
       root.loading = false
       return
     }
-    root.miseAvailable = true
     root.lsAborted = false
     root.lsRefreshId = root.currentRefreshId
     lsProcess.command = cmd
@@ -273,6 +275,7 @@ Item {
       return
     }
     root.miseAvailable = true
+    root.lastRefreshAt = Date.now()
     root.currentRefreshId += 1
     root.loading = true
     root.errorMessage = ""
@@ -283,6 +286,8 @@ Item {
 
   function requestRefresh() {
     if (root.destroying) return
+    if (root.lastRefreshAt > 0 && (Date.now() - root.lastRefreshAt) < root.panelRefreshMinMs)
+      return
     root.runRefresh()
   }
 
