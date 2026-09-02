@@ -65,32 +65,86 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰏗"
+    text: "radar"
     dimmed: root.loading || root.hasError
     tooltipText: {
-      if (!root.miseService) return "mise"
-      if (root.hasError) return "mise · error"
-      if (root.loading) return "mise · loading…"
-      if (root.outdatedCount > 0) return "mise · " + root.outdatedCount + " update" + (root.outdatedCount === 1 ? "" : "s")
-      return "mise · up to date"
+      if (!root.miseService) return "mise radar"
+      if (root.hasError) return "mise radar · error"
+      if (root.loading) return "mise radar · loading…"
+      if (root.outdatedCount > 0) return "mise radar · " + root.outdatedCount + " update" + (root.outdatedCount === 1 ? "" : "s")
+      return "mise radar · up to date"
     }
 
     iconComponent: Component {
       Item {
-        OpticalGlyph {
-          id: miseGlyph
-          anchors.fill: parent
-          text: button.text
+        id: radar
+
+        Repeater {
+          model: 2
+          Rectangle {
+            anchors.centerIn: parent
+            width: radar.width * (index === 0 ? 0.52 : 1)
+            height: width
+            radius: width / 2
+            color: "transparent"
+            border.color: button.foreground
+            border.width: 1
+            opacity: index === 0 ? 0.45 : 0.9
+          }
+        }
+
+        Rectangle {
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.verticalCenter: parent.verticalCenter
+          width: 1
+          height: parent.height
           color: button.foreground
-          fontFamily: button.fontFamily
-          fontSize: button.fontSize
+          opacity: 0.22
+        }
+
+        Rectangle {
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.verticalCenter: parent.verticalCenter
+          width: parent.width
+          height: 1
+          color: button.foreground
+          opacity: 0.22
+        }
+
+        Rectangle {
+          width: 1
+          height: parent.height * 0.5
+          color: button.foreground
+          x: parent.width / 2 - width / 2
+          y: parent.height / 2 - height
+          transformOrigin: Item.Bottom
+          rotation: 38
+          opacity: 0.95
+        }
+
+        Rectangle {
+          width: 2
+          height: 2
+          radius: 1
+          color: button.foreground
+          anchors.centerIn: parent
+        }
+
+        Rectangle {
+          visible: root.outdatedCount > 0 && !root.loading && !root.hasError
+          width: 3
+          height: 3
+          radius: 1.5
+          color: Color.accent
+          x: parent.width * 0.66
+          y: parent.height * 0.22
         }
 
         Text {
           textFormat: Text.PlainText
           visible: root.outdatedCount > 0 && !root.loading && !root.hasError
-          anchors.right: miseGlyph.right
-          anchors.bottom: miseGlyph.bottom
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
           anchors.rightMargin: -Style.space(1)
           anchors.bottomMargin: -Style.space(1)
           text: root.outdatedCount > 9 ? "9+" : String(root.outdatedCount)
