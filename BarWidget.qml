@@ -142,19 +142,6 @@ BarWidget {
           y: parent.height * 0.22
         }
 
-        Text {
-          textFormat: Text.PlainText
-          visible: root.outdatedCount > 0 && !root.loading && !root.hasError
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          anchors.rightMargin: -Style.space(1)
-          anchors.bottomMargin: -Style.space(1)
-          text: root.outdatedCount > 9 ? "9+" : String(root.outdatedCount)
-          color: radar.ink
-          font.family: button.fontFamily
-          font.pixelSize: Math.max(7, Math.round(button.fontSize * 0.45))
-          font.bold: true
-        }
       }
     }
 
