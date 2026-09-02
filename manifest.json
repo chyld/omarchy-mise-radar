@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "chyld.mise",
+  "name": "mise radar",
+  "version": "1.0.0",
+  "author": "Chyld Medford",
+  "license": "MIT",
+  "description": "Display-only mise version radar for the Omarchy bar. Badge when tools are behind latest. Never upgrades.",
+  "kinds": [
+    "bar-widget",
+    "service"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "service": "Service.qml"
+  },
+  "barWidget": {
+    "displayName": "mise radar",
+    "description": "mise installed vs latest",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
