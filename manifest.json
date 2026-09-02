@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "chyld.mise-radar",
   "name": "mise radar",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "author": "Chyld Medford",
   "license": "MIT",
   "description": "Agent harnesses move every week. A stale Claude, Codex, or OpenCode pin can mean a new model is out and your CLI does not even know it exists. mise radar watches the tools you actually use on Omarchy and turns the bar red when one falls behind latest, including brand-new releases mise would otherwise hide. Click for requested, installed, and latest. Display-only: it never upgrades, installs, or writes your mise config.",
