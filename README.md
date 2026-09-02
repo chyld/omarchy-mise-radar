@@ -1,6 +1,6 @@
 # mise radar
 
-Catch stale mise tools before they bite. Radar watches the versions you actually use on [Omarchy](https://omarchy.org) (Claude, Node, gh, and anything else in `config.toml`) and badges the bar when one falls behind latest. Click for a compact table of requested, installed, and latest, including brand-new releases mise would otherwise hide.
+Agent harnesses move every week. A stale Claude, Codex, or OpenCode pin can mean a new model is out and your CLI does not even know it exists. mise radar watches the tools you actually use on [Omarchy](https://omarchy.org) and turns the bar red when one falls behind latest, including brand-new releases mise would otherwise hide. Click for requested, installed, and latest.
 
 ![mise radar on the Omarchy bar](preview.png)
 
@@ -25,7 +25,7 @@ That deletes the plugin files. It does not change mise or `~/.config/mise/config
 ## What it shows
 
 - Quiet radar icon when everything is current
-- Count badge when something is behind
+- Red radar when something is behind
 - Panel table: tool, requested constraint, installed, latest
 
 Latest comes from `mise outdated`, including brand-new releases mise would otherwise hide. That matches [mise-versions.jdx.dev](https://mise-versions.jdx.dev) more closely than mise's default delay.
