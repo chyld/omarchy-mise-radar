@@ -10,12 +10,12 @@ Item {
   readonly property int sigTerm: 15
   readonly property int sigKill: 9
   readonly property int killGraceMs: 1500
-  readonly property int probeTimeoutMs: 5000
   readonly property int lsTimeoutMs: 15000
   readonly property int outdatedTimeoutMs: 45000
   readonly property int qmlBackupSlackMs: 2000
   readonly property string python3Path: "/usr/bin/python3"
   readonly property string killGraceSec: "1.5"
+  readonly property string trustedMisePath: "/usr/bin/mise"
 
   readonly property string supervisePath: {
     var url = Qt.resolvedUrl("./supervise.py")
@@ -28,7 +28,7 @@ Item {
   }
 
   property var shell: null
-  property string misePath: ""
+  property string misePath: "/usr/bin/mise"
   property bool miseAvailable: false
   property bool loading: true
   property string errorMessage: ""
@@ -42,9 +42,6 @@ Item {
   property int currentRefreshId: 0
   property int lsRefreshId: -1
   property int outdatedRefreshId: -1
-  property int probeRunId: 0
-  property int probeIndex: 0
-  property string probePathTrying: ""
   property string pendingStart: ""
   property bool lsAborted: false
   property bool outdatedAborted: false
@@ -54,12 +51,7 @@ Item {
     if (path.length < 2) return false
     if (path.charAt(0) !== "/") return false
     if (path.indexOf("..") !== -1) return false
-    if (path === "/usr/bin/mise") return true
-    var home = Quickshell.env("HOME") || ""
-    if (home && home.charAt(0) === "/" && home.indexOf("..") === -1) {
-      if (path === home + "/.local/bin/mise") return true
-    }
-    return false
+    return path === "/usr/bin/mise"
   }
 
   function isTrustedSupervisePath(path) {
@@ -69,27 +61,20 @@ Item {
     return true
   }
 
-  function trustedCandidates() {
-    var list = []
-    if (root.isTrustedPath("/usr/bin/mise")) list.push("/usr/bin/mise")
-    var home = Quickshell.env("HOME") || ""
-    if (home && home.charAt(0) === "/" && home.indexOf("..") === -1) {
-      var localPath = home + "/.local/bin/mise"
-      if (root.isTrustedPath(localPath)) list.push(localPath)
-    }
-    return list
+  function missingMiseMessage() {
+    return "Omarchy mise-bin (/usr/bin/mise) is missing or untrusted"
   }
 
-  function superviseCommand(timeoutSec, miseBin, miseArgs) {
+  function superviseCommand(timeoutSec, miseArgs) {
     if (!root.isTrustedSupervisePath(root.supervisePath)) return []
-    if (!root.isTrustedPath(miseBin)) return []
+    if (!root.isTrustedPath("/usr/bin/mise")) return []
     var cmd = [
       root.python3Path,
       root.supervisePath,
       String(timeoutSec),
       String(root.maxStdoutBytes),
       root.killGraceSec,
-      miseBin,
+      "/usr/bin/mise",
       "--"
     ]
     var i
@@ -99,7 +84,7 @@ Item {
   }
 
   function anyProcessRunning() {
-    return probeProcess.running || lsProcess.running || outdatedProcess.running
+    return lsProcess.running || outdatedProcess.running
   }
 
   function abortProc(proc, deadlineTimer, killTimer) {
@@ -113,7 +98,6 @@ Item {
   }
 
   function abortAllWork() {
-    root.abortProc(probeProcess, probeDeadline, probeKill)
     root.abortProc(lsProcess, lsDeadline, lsKill)
     root.abortProc(outdatedProcess, outdatedDeadline, outdatedKill)
   }
@@ -132,6 +116,7 @@ Item {
     if (exitCode === 0) return ""
     if (exitCode === 124) return "mise " + kind + " timed out"
     if (exitCode === 125) return "mise output exceeded 256KiB"
+    if (exitCode === 127) return root.missingMiseMessage()
     return "mise " + kind + " failed"
   }
 
@@ -141,56 +126,8 @@ Item {
     if (root.anyProcessRunning()) return
     var next = root.pendingStart
     root.pendingStart = ""
-    if (next === "probe") root.actuallyStartProbe()
-    else if (next === "ls") root.actuallyStartLs()
+    if (next === "ls") root.actuallyStartLs()
     else if (next === "outdated") root.actuallyStartOutdated()
-  }
-
-  function startProbe() {
-    if (root.destroying) return
-    root.probeIndex = 0
-    if (root.anyProcessRunning()) {
-      root.pendingStart = "probe"
-      root.abortAllWork()
-      return
-    }
-    root.actuallyStartProbe()
-  }
-
-  function actuallyStartProbe() {
-    if (root.destroying) return
-    if (!root.isTrustedSupervisePath(root.supervisePath)) {
-      root.miseAvailable = false
-      root.misePath = ""
-      root.errorMessage = "supervisor helper is not an absolute path"
-      root.loading = false
-      return
-    }
-    var candidates = root.trustedCandidates()
-    if (root.probeIndex >= candidates.length) {
-      root.miseAvailable = false
-      root.misePath = ""
-      root.errorMessage = "mise not found at /usr/bin/mise or ~/.local/bin/mise"
-      root.loading = false
-      return
-    }
-    var path = candidates[root.probeIndex]
-    if (!root.isTrustedPath(path)) {
-      root.probeIndex += 1
-      root.actuallyStartProbe()
-      return
-    }
-    var cmd = root.superviseCommand(5, path, ["--version"])
-    if (cmd.length === 0) {
-      root.probeIndex += 1
-      root.actuallyStartProbe()
-      return
-    }
-    root.probePathTrying = path
-    root.probeRunId += 1
-    probeProcess.command = cmd
-    probeDeadline.restart()
-    probeProcess.running = true
   }
 
   function startLs() {
@@ -205,17 +142,16 @@ Item {
 
   function actuallyStartLs() {
     if (root.destroying) return
-    if (!root.isTrustedPath(root.misePath) || !root.isTrustedSupervisePath(root.supervisePath)) {
+    if (!root.isTrustedPath("/usr/bin/mise") || !root.isTrustedSupervisePath(root.supervisePath)) {
       root.miseAvailable = false
-      root.misePath = ""
-      root.errorMessage = "mise not found at /usr/bin/mise or ~/.local/bin/mise"
+      root.errorMessage = root.missingMiseMessage()
       root.loading = false
       return
     }
-    var cmd = root.superviseCommand(15, root.misePath, ["ls", "--json", "--current"])
+    var cmd = root.superviseCommand(15, ["ls", "--json", "--current"])
     if (cmd.length === 0) {
       root.miseAvailable = false
-      root.errorMessage = "mise not found at /usr/bin/mise or ~/.local/bin/mise"
+      root.errorMessage = root.missingMiseMessage()
       root.loading = false
       return
     }
@@ -238,11 +174,15 @@ Item {
 
   function actuallyStartOutdated() {
     if (root.destroying) return
-    if (!root.isTrustedPath(root.misePath) || !root.isTrustedSupervisePath(root.supervisePath)) {
+    if (!root.miseAvailable) {
       root.updateModel()
       return
     }
-    var cmd = root.superviseCommand(45, root.misePath, ["outdated", "--bump", "--json"])
+    if (!root.isTrustedPath("/usr/bin/mise") || !root.isTrustedSupervisePath(root.supervisePath)) {
+      root.updateModel()
+      return
+    }
+    var cmd = root.superviseCommand(45, ["outdated", "--bump", "--json"])
     if (cmd.length === 0) {
       root.updateModel()
       return
@@ -266,25 +206,6 @@ Item {
     root.abortProc(outdatedProcess, outdatedDeadline, outdatedKill)
   }
 
-  function handleProbeExited(exitCode) {
-    probeDeadline.stop()
-    probeKill.stop()
-    if (root.destroying) return
-    var path = root.probePathTrying
-    var live = (root.pendingStart === "")
-    root.dispatchPending()
-    if (!live) return
-    if (exitCode === 0 && root.isTrustedPath(path)) {
-      root.misePath = path
-      root.miseAvailable = true
-      root.errorMessage = ""
-      root.runRefresh()
-      return
-    }
-    root.probeIndex += 1
-    root.actuallyStartProbe()
-  }
-
   function handleLsExited(exitCode) {
     lsDeadline.stop()
     lsKill.stop()
@@ -297,9 +218,18 @@ Item {
     if (!live) return
     if (root.lsAborted) {
       root.cachedLsJson = {}
+    } else if (exitCode === 127) {
+      root.miseAvailable = false
+      root.cachedLsJson = {}
+      if (root.errorMessage === "")
+        root.errorMessage = root.missingMiseMessage()
+      root.updateModel()
+      return
     } else {
       var parsed = Model.parseJsonObject(output)
       root.cachedLsJson = parsed ? parsed : {}
+      if (exitCode === 0)
+        root.miseAvailable = true
       if (exitCode !== 0 && root.errorMessage === "")
         root.errorMessage = root.describeExit(exitCode, "ls")
     }
@@ -337,8 +267,9 @@ Item {
 
   function runRefresh() {
     if (root.destroying) return
-    if (!root.miseAvailable || !root.isTrustedPath(root.misePath)) {
-      if (!root.miseAvailable) return
+    if (!root.isTrustedPath("/usr/bin/mise") || !root.isTrustedSupervisePath(root.supervisePath)) {
+      root.miseAvailable = false
+      root.errorMessage = root.missingMiseMessage()
       root.loading = false
       return
     }
@@ -352,49 +283,21 @@ Item {
 
   function requestRefresh() {
     if (root.destroying) return
-    if (!root.miseAvailable || !root.isTrustedPath(root.misePath)) return
+    if (!root.miseAvailable) return
     root.runRefresh()
   }
 
   Component.onCompleted: {
-    root.startProbe()
+    root.runRefresh()
   }
 
   Component.onDestruction: {
     root.destroying = true
     root.pendingStart = ""
-    probeDeadline.stop()
     lsDeadline.stop()
     outdatedDeadline.stop()
-    root.abortProc(probeProcess, probeDeadline, probeKill)
     root.abortProc(lsProcess, lsDeadline, lsKill)
     root.abortProc(outdatedProcess, outdatedDeadline, outdatedKill)
-  }
-
-  Process {
-    id: probeProcess
-    command: []
-    running: false
-    onExited: function(exitCode) { root.handleProbeExited(exitCode) }
-  }
-
-  Timer {
-    id: probeDeadline
-    interval: root.probeTimeoutMs + root.qmlBackupSlackMs
-    repeat: false
-    onTriggered: {
-      if (!probeProcess.running) return
-      root.abortProc(probeProcess, probeDeadline, probeKill)
-    }
-  }
-
-  Timer {
-    id: probeKill
-    interval: root.killGraceMs
-    repeat: false
-    onTriggered: {
-      if (probeProcess.running) probeProcess.signal(root.sigKill)
-    }
   }
 
   Process {
