@@ -12,7 +12,7 @@ This plugin never upgrades, installs, or writes config.
 omarchy plugin add https://github.com/chyld/omarchy-mise-radar.git --enable
 ```
 
-Requires Omarchy Quattro and [mise](https://mise.jdx.dev) on `PATH` or `~/.local/bin/mise`.
+Omarchy already includes mise (`mise-bin`) at `/usr/bin/mise`. The plugin also accepts `$HOME/.local/bin/mise` as a fallback if that distro binary is missing.
 
 ## Remove
 
@@ -21,6 +21,22 @@ omarchy plugin remove chyld.mise-radar
 ```
 
 That deletes the plugin files. It does not change mise or `~/.config/mise/config.toml`.
+
+## Trust boundary
+
+The plugin executes only these two absolute paths, in this order:
+
+1. `/usr/bin/mise`
+2. `$HOME/.local/bin/mise`
+
+It never searches `PATH` and never launches `sh`, `env`, or `test`. Relative paths and any path containing `..` are rejected. Each candidate is probed with `--version` before use.
+
+Commands are argv lists (not a shell):
+
+- `["/usr/bin/mise", "ls", "--json", "--current"]` (15s deadline)
+- `["/usr/bin/mise", "outdated", "--bump", "--json"]` with `MISE_MINIMUM_RELEASE_AGE=0` inherited into the process environment (45s deadline; this command may use the network)
+
+Stdout is capped at 256KiB. Timed-out, oversized, or superseded runs receive SIGTERM, then SIGKILL after 1.5s. The service kills leftover processes on destruction.
 
 ## What it shows
 
@@ -36,14 +52,7 @@ On shell start, when you open the panel, and every 4 hours.
 
 ## Display-only
 
-It only runs:
-
-```sh
-mise ls --json --current
-MISE_MINIMUM_RELEASE_AGE=0 mise outdated --bump --json
-```
-
-It never runs `mise upgrade`, `mise install`, `mise use`, or writes `~/.config/mise/config.toml`.
+It only runs the argv lists above. It never runs `mise upgrade`, `mise install`, `mise use`, or writes `~/.config/mise/config.toml`.
 
 ## Development
 

@@ -94,8 +94,12 @@ test("parseMiseList with only installed but not active version", () => {
 });
 
 test("parseMiseOutdated with empty input", () => {
-  assert.deepStrictEqual(Model.parseMiseOutdated({}), {});
-  assert.deepStrictEqual(Model.parseMiseOutdated(null), {});
+  const empty = Model.parseMiseOutdated({});
+  assert.strictEqual(Object.getPrototypeOf(empty), null);
+  assert.strictEqual(Object.keys(empty).length, 0);
+  const fromNull = Model.parseMiseOutdated(null);
+  assert.strictEqual(Object.getPrototypeOf(fromNull), null);
+  assert.strictEqual(Object.keys(fromNull).length, 0);
 });
 
 test("parseMiseOutdated with outdated tools", () => {
@@ -192,3 +196,64 @@ test("buildModel with malformed JSON gracefully degrades", () => {
   assert.strictEqual(result.outdatedCount, 0);
   assert.strictEqual(result.rows.length, 0);
 });
+
+test("parseMiseOutdated ignores proto and unsafe keys", () => {
+  const protoKey = "_" + "_proto_" + "_";
+  const input = {};
+  Object.defineProperty(input, protoKey, { value: { latest: "hacked" }, enumerable: true, configurable: true, writable: true });
+  input.prototype = { latest: "x" };
+  input.constructor = { latest: "y" };
+  input.node = { latest: "1.0.0" };
+  input["foo" + "_" + "_bar"] = { latest: "z" };
+  const result = Model.parseMiseOutdated(input);
+  assert.strictEqual(Object.getPrototypeOf(result), null);
+  assert.strictEqual(result.node.latest, "1.0.0");
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(result, protoKey), false);
+  assert.strictEqual(result[protoKey], undefined);
+  assert.strictEqual(result.prototype, undefined);
+  assert.strictEqual(result.constructor, undefined);
+  assert.strictEqual(result["foo" + "_" + "_bar"], undefined);
+});
+
+test("parseMiseList truncates more than 64 tools", () => {
+  const input = {};
+  for (let i = 0; i < 80; i++) {
+    const n = "t" + String(i).padStart(2, "0");
+    input[n] = [{ version: "1.0.0", requested_version: "1", installed: true, active: true }];
+  }
+  const result = Model.parseMiseList(input);
+  assert.strictEqual(result.length, 64);
+});
+
+test("parseJsonObject rejects oversize and non-objects", () => {
+  assert.strictEqual(Model.parseJsonObject("x".repeat(262145)), null);
+  assert.strictEqual(Model.parseJsonObject(null), null);
+  assert.strictEqual(Model.parseJsonObject(123), null);
+  assert.strictEqual(Model.parseJsonObject("[1,2]"), null);
+  assert.strictEqual(Model.parseJsonObject("null"), null);
+  assert.strictEqual(Model.parseJsonObject("true"), null);
+  assert.deepStrictEqual(Model.parseJsonObject('{"a":1}'), { a: 1 });
+});
+
+test("closed schema ignores extra fields", () => {
+  const list = Model.parseMiseList({
+    node: [{
+      version: "1.0.0",
+      requested_version: "latest",
+      installed: true,
+      active: true,
+      install_path: "/secret",
+      extra: "nope"
+    }]
+  });
+  assert.strictEqual(list.length, 1);
+  assert.deepStrictEqual(Object.keys(list[0]).sort(), ["current", "latest", "name", "outdated", "requested"]);
+  assert.strictEqual(list[0].current, "1.0.0");
+  assert.strictEqual(list[0].install_path, undefined);
+  const od = Model.parseMiseOutdated({
+    node: { latest: "2.0.0", current: "1.0.0", requested: "latest", extra: "nope" }
+  });
+  assert.deepStrictEqual(Object.keys(od.node), ["latest"]);
+  assert.strictEqual(od.node.latest, "2.0.0");
+});
+
