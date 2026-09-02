@@ -9,6 +9,7 @@ Item {
   readonly property int producerMaxStdoutBytes: 261120
   readonly property int maxStdoutBytes: 262144
   readonly property int panelRefreshMinMs: 60000
+  readonly property int panelErrorRefreshMinMs: 5000
   readonly property int sigTerm: 15
   readonly property int sigKill: 9
   readonly property int killGraceMs: 5000
@@ -118,7 +119,7 @@ Item {
   function describeExit(exitCode, kind) {
     if (exitCode === 0) return ""
     if (exitCode === 124) return "mise " + kind + " timed out"
-    if (exitCode === 125) return "mise output exceeded 256KiB"
+    if (exitCode === 125) return "mise output exceeded 255KiB"
     if (exitCode === 126) return root.missingMiseMessage()
     return "mise " + kind + " failed"
   }
@@ -286,8 +287,9 @@ Item {
 
   function requestRefresh() {
     if (root.destroying) return
-    if (root.lastRefreshAt > 0 && (Date.now() - root.lastRefreshAt) < root.panelRefreshMinMs)
-      return
+    var since = Date.now() - root.lastRefreshAt
+    var minMs = root.errorMessage === "" ? root.panelRefreshMinMs : root.panelErrorRefreshMinMs
+    if (root.lastRefreshAt > 0 && since >= 0 && since < minMs) return
     root.runRefresh()
   }
 
