@@ -13,6 +13,7 @@ BarWidget {
   readonly property bool loading: miseService ? miseService.loading : true
   readonly property int outdatedCount: miseService ? miseService.outdatedCount : 0
   readonly property bool hasError: miseService ? miseService.errorMessage !== "" : false
+  readonly property bool stale: root.outdatedCount > 0 && !root.loading && !root.hasError
   readonly property bool popoutSwitchClosing: panelLoader.item
     ? panelLoader.item.popoutSwitchClosing === true : false
 
@@ -78,6 +79,7 @@ BarWidget {
     iconComponent: Component {
       Item {
         id: radar
+        readonly property color ink: root.stale ? Color.urgent : button.foreground
 
         Repeater {
           model: 2
@@ -87,7 +89,7 @@ BarWidget {
             height: width
             radius: width / 2
             color: "transparent"
-            border.color: button.foreground
+            border.color: radar.ink
             border.width: 1
             opacity: index === 0 ? 0.45 : 0.9
           }
@@ -98,7 +100,7 @@ BarWidget {
           anchors.verticalCenter: parent.verticalCenter
           width: 1
           height: parent.height
-          color: button.foreground
+          color: radar.ink
           opacity: 0.22
         }
 
@@ -107,14 +109,14 @@ BarWidget {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width
           height: 1
-          color: button.foreground
+          color: radar.ink
           opacity: 0.22
         }
 
         Rectangle {
           width: 1
           height: parent.height * 0.5
-          color: button.foreground
+          color: radar.ink
           x: parent.width / 2 - width / 2
           y: parent.height / 2 - height
           transformOrigin: Item.Bottom
@@ -126,7 +128,7 @@ BarWidget {
           width: 2
           height: 2
           radius: 1
-          color: button.foreground
+          color: radar.ink
           anchors.centerIn: parent
         }
 
@@ -135,7 +137,7 @@ BarWidget {
           width: 3
           height: 3
           radius: 1.5
-          color: Color.accent
+          color: radar.ink
           x: parent.width * 0.66
           y: parent.height * 0.22
         }
@@ -148,7 +150,7 @@ BarWidget {
           anchors.rightMargin: -Style.space(1)
           anchors.bottomMargin: -Style.space(1)
           text: root.outdatedCount > 9 ? "9+" : String(root.outdatedCount)
-          color: Color.accent
+          color: radar.ink
           font.family: button.fontFamily
           font.pixelSize: Math.max(7, Math.round(button.fontSize * 0.45))
           font.bold: true
