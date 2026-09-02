@@ -1,6 +1,6 @@
 # mise radar
 
-Display-only mise version radar for [Omarchy](https://omarchy.org) Quattro. A bar badge when configured tools are behind latest. Click for a compact table of requested, installed, and latest.
+Catch stale mise tools before they bite. Radar watches the versions you actually use on [Omarchy](https://omarchy.org) (Claude, Node, gh, and anything else in `config.toml`) and badges the bar when one falls behind latest. Click for a compact table of requested, installed, and latest, including brand-new releases mise would otherwise hide.
 
 ![mise radar on the Omarchy bar](preview.png)
 

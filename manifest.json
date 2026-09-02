@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Chyld Medford",
   "license": "MIT",
-  "description": "Display-only mise version radar for the Omarchy bar. Badge when tools are behind latest. Never upgrades.",
+  "description": "Catch stale mise tools before they bite. Radar watches the versions you actually use on Omarchy (Claude, Node, gh, and anything else in config.toml) and badges the bar when one falls behind latest. Click for a compact table of requested, installed, and latest, including brand-new releases mise would otherwise hide. Display-only: it never upgrades, installs, or writes your mise config.",
   "kinds": [
     "bar-widget",
     "service"
@@ -16,7 +16,7 @@
   },
   "barWidget": {
     "displayName": "mise radar",
-    "description": "mise installed vs latest",
+    "description": "See which mise tools are behind latest, without upgrading them.",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right"
