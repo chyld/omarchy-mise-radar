@@ -59,7 +59,7 @@ Panel {
 
           Text {
             textFormat: Text.PlainText
-            text: "mise"
+            text: "mise radar"
             color: root.barForeground
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.body
@@ -69,7 +69,7 @@ Panel {
           Text {
             textFormat: Text.PlainText
             visible: root.service && root.service.lastChecked !== ""
-            text: root.service ? root.service.lastChecked : ""
+            text: root.service ? "last updated " + root.service.lastChecked : ""
             color: root.barForeground
             opacity: 0.45
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
