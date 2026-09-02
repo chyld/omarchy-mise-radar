@@ -5,10 +5,10 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "chyld.mise"
+  moduleName: "chyld.mise-radar"
 
   readonly property var miseService: bar && bar.shell
-    ? bar.shell.serviceFor("chyld.mise") : null
+    ? bar.shell.serviceFor("chyld.mise-radar") : null
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool loading: miseService ? miseService.loading : true
   readonly property int outdatedCount: miseService ? miseService.outdatedCount : 0

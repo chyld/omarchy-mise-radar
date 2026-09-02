@@ -5,7 +5,7 @@ import qs.Ui
 
 Panel {
   id: root
-  moduleName: "chyld.mise"
+  moduleName: "chyld.mise-radar"
   manageIpc: false
 
   property var anchorItem: null
