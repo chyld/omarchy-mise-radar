@@ -11,6 +11,7 @@ bound to an opened fd (/proc/self/fd/N), not a reopened pathname.
 """
 from __future__ import annotations
 
+import errno
 import os
 import re
 import select
@@ -30,6 +31,7 @@ ALLOWED_MISE = "/usr/bin/mise"
 ALLOWED_SUBCOMMANDS = ("--version", "ls", "outdated")
 CHUNK = 8192
 STDERR_CAP = 200
+REAP_TIMEOUT_SEC = 2.0
 VERSION_TIMEOUT_SEC = 5.0
 VERSION_MAX_BYTES = 4096
 VERSION_HEAD_RE = re.compile(r"^(?:mise|[0-9]{4}\.)")
@@ -187,7 +189,7 @@ def open_trusted_mise_fd():
     return fd
 
 
-def spawn_bound_mise(fd, mise_args):
+def spawn_bound_mise(fd, mise_args, grace_sec):
     exec_path = "/proc/self/fd/%d" % fd
     proc = subprocess.Popen(
         ["mise"] + list(mise_args),
@@ -202,7 +204,8 @@ def spawn_bound_mise(fd, mise_args):
     try:
         pidfd = os.pidfd_open(proc.pid)
     except OSError:
-        pidfd = None
+        terminate_group(proc, None, grace_sec)
+        fail(1, "pidfd_open failed")
     return proc, pidfd
 
 
@@ -215,48 +218,61 @@ def close_pidfd(pidfd):
         pass
 
 
-def reap_proc(proc):
+def reap_proc(proc, timeout=REAP_TIMEOUT_SEC):
     if proc is None:
-        return
+        return True
+    reaped = True
     try:
-        proc.wait(timeout=2)
+        proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        pass
+        reaped = False
     if proc.stdout is not None:
         try:
             proc.stdout.close()
         except OSError:
             pass
+    return reaped
 
 
 def leader_has_exited(pidfd):
-    """True if the pidfd leader has exited, without reaping it."""
+    """Return (exited, certain). Missing pidfd and waitid errors are not exited."""
     if pidfd is None:
-        return True
+        return False, False
     try:
         info = os.waitid(os.P_PIDFD, pidfd, os.WEXITED | os.WNOHANG | os.WNOWAIT)
     except OSError:
-        return True
+        return False, False
     if info is None:
-        return False
-    return getattr(info, "si_pid", 0) != 0
+        return False, True
+    return getattr(info, "si_pid", 0) != 0, True
+
+
+def leader_is_certainly_exited(pidfd):
+    exited, certain = leader_has_exited(pidfd)
+    return certain and exited
 
 
 def pgid_has_live_members(pgid):
-    """True if /proc shows a non-zombie process in this process group."""
+    """Return (has_live, certain). /proc observation errors are not 'no members'."""
     if pgid is None:
-        return False
+        return False, False
     try:
         names = os.listdir("/proc")
     except OSError:
-        return False
+        return False, False
+    uncertain = False
     for name in names:
         if not name.isdigit():
             continue
         try:
             with open("/proc/%s/stat" % name, "r", encoding="ascii", errors="replace") as fh:
                 text = fh.read()
-        except OSError:
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            if getattr(exc, "errno", None) == errno.ENOENT:
+                continue
+            uncertain = True
             continue
         rparen = text.rfind(")")
         if rparen < 0:
@@ -270,22 +286,26 @@ def pgid_has_live_members(pgid):
         except ValueError:
             continue
         if member_pgid == pgid and state != "Z":
-            return True
-    return False
+            return True, True
+    if uncertain:
+        return False, False
+    return False, True
 
 
 def group_needs_kill(pidfd, pgid):
-    """KILL only if this unreaped identity still has a live leader or descendants."""
-    if pidfd is None:
-        return False
-    if not leader_has_exited(pidfd):
+    """KILL if this unreaped identity may still have a live leader or descendants."""
+    exited, certain = leader_has_exited(pidfd)
+    if not certain or not exited:
         return True
-    return pgid_has_live_members(pgid)
+    has_live, live_certain = pgid_has_live_members(pgid)
+    if not live_certain:
+        return True
+    return has_live
 
 
 def terminate_group(proc, pidfd, grace_sec):
     try:
-        if pidfd is not None and proc is not None:
+        if proc is not None and proc.returncode is None:
             pgid = proc.pid
             try:
                 os.killpg(pgid, signal.SIGTERM)
@@ -302,7 +322,8 @@ def terminate_group(proc, pidfd, grace_sec):
                 except (ProcessLookupError, PermissionError, OSError):
                     pass
     finally:
-        reap_proc(proc)
+        if not reap_proc(proc):
+            fail(1, "failed to reap mise process")
 
 
 def copy_stdout(proc, pidfd, max_bytes, deadline, dest=None):
@@ -328,7 +349,7 @@ def copy_stdout(proc, pidfd, max_bytes, deadline, dest=None):
             note_stop("timeout")
             break
         if not ready:
-            if leader_has_exited(pidfd):
+            if leader_is_certainly_exited(pidfd):
                 try:
                     ready, _, _ = select.select([fd], [], [], 0)
                 except (InterruptedError, ValueError, OSError):
@@ -379,7 +400,7 @@ def supervise_child(proc, pidfd, max_bytes, timeout_sec, grace_sec, dest=None):
             terminate_group(proc, pidfd, grace_sec)
             signaled = True
         else:
-            while not leader_has_exited(pidfd):
+            while not leader_is_certainly_exited(pidfd):
                 if stop_reason is not None:
                     terminate_group(proc, pidfd, grace_sec)
                     signaled = True
@@ -392,7 +413,8 @@ def supervise_child(proc, pidfd, max_bytes, timeout_sec, grace_sec, dest=None):
                     break
                 time.sleep(min(0.2, remaining))
             if not signaled:
-                reap_proc(proc)
+                if not reap_proc(proc):
+                    fail(1, "failed to reap mise process")
     except Exception:
         terminate_group(proc, pidfd, grace_sec)
         fail(1, "supervisor error")
@@ -418,7 +440,7 @@ def exit_for_child(overflow, proc):
 
 def enforce_version_policy(fd, grace_sec):
     try:
-        proc, pidfd = spawn_bound_mise(fd, ["--version"])
+        proc, pidfd = spawn_bound_mise(fd, ["--version"], grace_sec)
     except OSError:
         fail(EXIT_BAD_PATH, "failed to start mise")
     buf = bytearray()
@@ -454,7 +476,7 @@ def main():
         if mise_args[0] in ("ls", "outdated"):
             enforce_version_policy(fd, grace_sec)
         try:
-            proc, pidfd = spawn_bound_mise(fd, mise_args)
+            proc, pidfd = spawn_bound_mise(fd, mise_args, grace_sec)
         except OSError:
             fail(EXIT_BAD_PATH, "failed to start mise")
         overflow = supervise_child(proc, pidfd, max_bytes, timeout_sec, grace_sec)
