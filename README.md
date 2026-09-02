@@ -2,6 +2,8 @@
 
 Display-only mise version radar for [Omarchy](https://omarchy.org) Quattro. A bar badge when configured tools are behind latest. Click for a compact table of requested, installed, and latest.
 
+![mise radar on the Omarchy bar](screenshot.png)
+
 This plugin never upgrades, installs, or writes config.
 
 ## Install
@@ -14,7 +16,7 @@ Requires Omarchy Quattro and [mise](https://mise.jdx.dev) on `PATH` or `~/.local
 
 ## What it shows
 
-- Quiet package icon when everything is current
+- Quiet radar icon when everything is current
 - Count badge when something is behind
 - Panel table: tool, requested constraint, installed, latest
 
