@@ -13,6 +13,19 @@ Item {
   readonly property int probeTimeoutMs: 5000
   readonly property int lsTimeoutMs: 15000
   readonly property int outdatedTimeoutMs: 45000
+  readonly property int qmlBackupSlackMs: 2000
+  readonly property string python3Path: "/usr/bin/python3"
+  readonly property string killGraceSec: "1.5"
+
+  readonly property string supervisePath: {
+    var url = Qt.resolvedUrl("./supervise.py")
+    var s = "" + url
+    if (s.indexOf("file://") === 0)
+      s = s.substring(7)
+    if (!s || s.charAt(0) !== "/") return ""
+    if (s.indexOf("..") !== -1) return ""
+    return s
+  }
 
   property var shell: null
   property string misePath: ""
@@ -49,6 +62,13 @@ Item {
     return false
   }
 
+  function isTrustedSupervisePath(path) {
+    if (!path || typeof path !== "string") return false
+    if (path.charAt(0) !== "/") return false
+    if (path.indexOf("..") !== -1) return false
+    return true
+  }
+
   function trustedCandidates() {
     var list = []
     if (root.isTrustedPath("/usr/bin/mise")) list.push("/usr/bin/mise")
@@ -58,6 +78,24 @@ Item {
       if (root.isTrustedPath(localPath)) list.push(localPath)
     }
     return list
+  }
+
+  function superviseCommand(timeoutSec, miseBin, miseArgs) {
+    if (!root.isTrustedSupervisePath(root.supervisePath)) return []
+    if (!root.isTrustedPath(miseBin)) return []
+    var cmd = [
+      root.python3Path,
+      root.supervisePath,
+      String(timeoutSec),
+      String(root.maxStdoutBytes),
+      root.killGraceSec,
+      miseBin,
+      "--"
+    ]
+    var i
+    for (i = 0; i < miseArgs.length; i++)
+      cmd.push(miseArgs[i])
+    return cmd
   }
 
   function anyProcessRunning() {
@@ -80,13 +118,6 @@ Item {
     root.abortProc(outdatedProcess, outdatedDeadline, outdatedKill)
   }
 
-  function killNow(proc) {
-    if (proc && proc.running) {
-      proc.signal(root.sigTerm)
-      proc.signal(root.sigKill)
-    }
-  }
-
   function collectorLength(collector) {
     if (!collector) return 0
     var blob = collector.data
@@ -95,6 +126,13 @@ Item {
     var text = collector.text
     if (text && typeof text.length === "number") return text.length
     return 0
+  }
+
+  function describeExit(exitCode, kind) {
+    if (exitCode === 0) return ""
+    if (exitCode === 124) return "mise " + kind + " timed out"
+    if (exitCode === 125) return "mise output exceeded 256KiB"
+    return "mise " + kind + " failed"
   }
 
   function dispatchPending() {
@@ -121,6 +159,13 @@ Item {
 
   function actuallyStartProbe() {
     if (root.destroying) return
+    if (!root.isTrustedSupervisePath(root.supervisePath)) {
+      root.miseAvailable = false
+      root.misePath = ""
+      root.errorMessage = "supervisor helper is not an absolute path"
+      root.loading = false
+      return
+    }
     var candidates = root.trustedCandidates()
     if (root.probeIndex >= candidates.length) {
       root.miseAvailable = false
@@ -135,9 +180,15 @@ Item {
       root.actuallyStartProbe()
       return
     }
+    var cmd = root.superviseCommand(5, path, ["--version"])
+    if (cmd.length === 0) {
+      root.probeIndex += 1
+      root.actuallyStartProbe()
+      return
+    }
     root.probePathTrying = path
     root.probeRunId += 1
-    probeProcess.command = [path, "--version"]
+    probeProcess.command = cmd
     probeDeadline.restart()
     probeProcess.running = true
   }
@@ -154,16 +205,23 @@ Item {
 
   function actuallyStartLs() {
     if (root.destroying) return
-    if (!root.isTrustedPath(root.misePath)) {
+    if (!root.isTrustedPath(root.misePath) || !root.isTrustedSupervisePath(root.supervisePath)) {
       root.miseAvailable = false
       root.misePath = ""
       root.errorMessage = "mise not found at /usr/bin/mise or ~/.local/bin/mise"
       root.loading = false
       return
     }
+    var cmd = root.superviseCommand(15, root.misePath, ["ls", "--json", "--current"])
+    if (cmd.length === 0) {
+      root.miseAvailable = false
+      root.errorMessage = "mise not found at /usr/bin/mise or ~/.local/bin/mise"
+      root.loading = false
+      return
+    }
     root.lsAborted = false
     root.lsRefreshId = root.currentRefreshId
-    lsProcess.command = [root.misePath, "ls", "--json", "--current"]
+    lsProcess.command = cmd
     lsDeadline.restart()
     lsProcess.running = true
   }
@@ -180,13 +238,18 @@ Item {
 
   function actuallyStartOutdated() {
     if (root.destroying) return
-    if (!root.isTrustedPath(root.misePath)) {
+    if (!root.isTrustedPath(root.misePath) || !root.isTrustedSupervisePath(root.supervisePath)) {
+      root.updateModel()
+      return
+    }
+    var cmd = root.superviseCommand(45, root.misePath, ["outdated", "--bump", "--json"])
+    if (cmd.length === 0) {
       root.updateModel()
       return
     }
     root.outdatedAborted = false
     root.outdatedRefreshId = root.currentRefreshId
-    outdatedProcess.command = [root.misePath, "outdated", "--bump", "--json"]
+    outdatedProcess.command = cmd
     outdatedDeadline.restart()
     outdatedProcess.running = true
   }
@@ -238,7 +301,7 @@ Item {
       var parsed = Model.parseJsonObject(output)
       root.cachedLsJson = parsed ? parsed : {}
       if (exitCode !== 0 && root.errorMessage === "")
-        root.errorMessage = "mise ls failed"
+        root.errorMessage = root.describeExit(exitCode, "ls")
     }
     root.startOutdated()
   }
@@ -259,7 +322,7 @@ Item {
       var parsed = Model.parseJsonObject(output)
       root.cachedOutdatedJson = parsed ? parsed : {}
       if (exitCode !== 0 && root.errorMessage === "")
-        root.errorMessage = "mise outdated failed"
+        root.errorMessage = root.describeExit(exitCode, "outdated")
     }
     root.updateModel()
   }
@@ -301,14 +364,11 @@ Item {
     root.destroying = true
     root.pendingStart = ""
     probeDeadline.stop()
-    probeKill.stop()
     lsDeadline.stop()
-    lsKill.stop()
     outdatedDeadline.stop()
-    outdatedKill.stop()
-    root.killNow(probeProcess)
-    root.killNow(lsProcess)
-    root.killNow(outdatedProcess)
+    root.abortProc(probeProcess, probeDeadline, probeKill)
+    root.abortProc(lsProcess, lsDeadline, lsKill)
+    root.abortProc(outdatedProcess, outdatedDeadline, outdatedKill)
   }
 
   Process {
@@ -320,7 +380,7 @@ Item {
 
   Timer {
     id: probeDeadline
-    interval: root.probeTimeoutMs
+    interval: root.probeTimeoutMs + root.qmlBackupSlackMs
     repeat: false
     onTriggered: {
       if (!probeProcess.running) return
@@ -354,7 +414,7 @@ Item {
 
   Timer {
     id: lsDeadline
-    interval: root.lsTimeoutMs
+    interval: root.lsTimeoutMs + root.qmlBackupSlackMs
     repeat: false
     onTriggered: {
       if (!lsProcess.running) return
@@ -393,7 +453,7 @@ Item {
 
   Timer {
     id: outdatedDeadline
-    interval: root.outdatedTimeoutMs
+    interval: root.outdatedTimeoutMs + root.qmlBackupSlackMs
     repeat: false
     onTriggered: {
       if (!outdatedProcess.running) return

@@ -3,3 +3,5 @@ node_modules/
 *.swo
 *~
 .DS_Store
+__pycache__/
+*.pyc

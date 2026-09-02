@@ -24,19 +24,23 @@ That deletes the plugin files. It does not change mise or `~/.config/mise/config
 
 ## Trust boundary
 
-The plugin executes only these two absolute paths, in this order:
+The plugin launches only `/usr/bin/python3` with this plugin's `supervise.py`. That helper is the process supervisor: it `setsid`s a trusted mise binary into its own session/process group, copies stdout with a 256KiB producer-side ceiling, and on timeout, overflow, SIGTERM/SIGINT/SIGHUP, or replacement it sends SIGTERM to the group, waits 1.5s, then SIGKILL and reaps the tree.
 
-1. `/usr/bin/mise`
+mise itself is never searched on `PATH`. The only accepted binaries, in order, are:
+
+1. `/usr/bin/mise` (Omarchy's `mise-bin` package)
 2. `$HOME/.local/bin/mise`
 
-It never searches `PATH` and never launches `sh`, `env`, or `test`. Relative paths and any path containing `..` are rejected. Each candidate is probed with `--version` before use.
+Relative paths, any path containing `..`, and any other location are rejected. Each candidate is probed with `--version` through the supervisor before use. The plugin never launches `sh`, `env`, or `test`, and never uses `curl | sh`.
 
-Commands are argv lists (not a shell):
+Commands are argv lists (not a shell), always:
 
-- `["/usr/bin/mise", "ls", "--json", "--current"]` (15s deadline)
-- `["/usr/bin/mise", "outdated", "--bump", "--json"]` with `MISE_MINIMUM_RELEASE_AGE=0` inherited into the process environment (45s deadline; this command may use the network)
+`["/usr/bin/python3", "<plugin>/supervise.py", TIMEOUT, "262144", "1.5", "<mise>", "--", ...]`
 
-Stdout is capped at 256KiB. Timed-out, oversized, or superseded runs receive SIGTERM, then SIGKILL after 1.5s. The service kills leftover processes on destruction.
+- `ls --json --current` (15s supervisor deadline)
+- `outdated --bump --json` with `MISE_MINIMUM_RELEASE_AGE=0` inherited into the process environment (45s supervisor deadline; this command may use the network)
+
+QML keeps a slightly longer backup timer, a 256KiB StdioCollector cap, generation tokens, and destruction that SIGTERM's the supervisor then SIGKILL after 1.5s so the helper can reap the group first.
 
 ## What it shows
 
@@ -58,6 +62,8 @@ It only runs the argv lists above. It never runs `mise upgrade`, `mise install`,
 
 ```sh
 node --test tests/model.test.js
+/usr/bin/python3 -m py_compile supervise.py
+/usr/bin/python3 -m unittest tests.supervise_test
 omarchy plugin validate .
 ```
 
