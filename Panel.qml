@@ -69,7 +69,7 @@ Panel {
           Text {
             textFormat: Text.PlainText
             visible: root.service && root.service.lastChecked !== ""
-            text: root.service ? "last updated " + root.service.lastChecked : ""
+            text: root.service ? "last successful check " + root.service.lastChecked : ""
             color: root.barForeground
             opacity: 0.45
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -109,7 +109,7 @@ Panel {
         }
 
         Column {
-          visible: root.service && !root.service.loading && root.service.toolRows.length > 0
+          visible: root.service && root.service.toolRows.length > 0
           width: parent.width
           spacing: 0
 

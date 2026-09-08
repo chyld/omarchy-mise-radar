@@ -4,8 +4,8 @@ const Model = require("../Model.js");
 
 test("parseMiseList with empty input", () => {
   assert.deepStrictEqual(Model.parseMiseList({}), []);
-  assert.deepStrictEqual(Model.parseMiseList(null), []);
-  assert.deepStrictEqual(Model.parseMiseList(undefined), []);
+  assert.deepStrictEqual(Model.parseMiseList(null), null);
+  assert.deepStrictEqual(Model.parseMiseList(undefined), null);
 });
 
 test("parseMiseList with real mise ls output", () => {
@@ -98,8 +98,7 @@ test("parseMiseOutdated with empty input", () => {
   assert.strictEqual(Object.getPrototypeOf(empty), null);
   assert.strictEqual(Object.keys(empty).length, 0);
   const fromNull = Model.parseMiseOutdated(null);
-  assert.strictEqual(Object.getPrototypeOf(fromNull), null);
-  assert.strictEqual(Object.keys(fromNull).length, 0);
+  assert.strictEqual(fromNull, null);
 });
 
 test("parseMiseOutdated with outdated tools", () => {
@@ -191,13 +190,11 @@ test("buildModel integrates ls and outdated", () => {
   assert.strictEqual(nodeRow.outdated, false);
 });
 
-test("buildModel with malformed JSON gracefully degrades", () => {
-  const result = Model.buildModel(null, null);
-  assert.strictEqual(result.outdatedCount, 0);
-  assert.strictEqual(result.rows.length, 0);
+test("buildModel rejects malformed documents", () => {
+  assert.strictEqual(Model.buildModel(null, null), null);
 });
 
-test("parseMiseOutdated ignores proto and unsafe keys", () => {
+test("parseMiseOutdated rejects documents with unsafe keys", () => {
   const protoKey = "_" + "_proto_" + "_";
   const input = {};
   Object.defineProperty(input, protoKey, { value: { latest: "hacked" }, enumerable: true, configurable: true, writable: true });
@@ -206,23 +203,17 @@ test("parseMiseOutdated ignores proto and unsafe keys", () => {
   input.node = { latest: "1.0.0" };
   input["foo" + "_" + "_bar"] = { latest: "z" };
   const result = Model.parseMiseOutdated(input);
-  assert.strictEqual(Object.getPrototypeOf(result), null);
-  assert.strictEqual(result.node.latest, "1.0.0");
-  assert.strictEqual(Object.prototype.hasOwnProperty.call(result, protoKey), false);
-  assert.strictEqual(result[protoKey], undefined);
-  assert.strictEqual(result.prototype, undefined);
-  assert.strictEqual(result.constructor, undefined);
-  assert.strictEqual(result["foo" + "_" + "_bar"], undefined);
+  assert.strictEqual(result, null);
 });
 
-test("parseMiseList truncates more than 64 tools", () => {
+test("parseMiseList rejects more than 64 tools", () => {
   const input = {};
   for (let i = 0; i < 80; i++) {
     const n = "t" + String(i).padStart(2, "0");
     input[n] = [{ version: "1.0.0", requested_version: "1", installed: true, active: true }];
   }
   const result = Model.parseMiseList(input);
-  assert.strictEqual(result.length, 64);
+  assert.strictEqual(result, null);
 });
 
 test("parseJsonObject rejects oversize and non-objects", () => {
@@ -257,3 +248,31 @@ test("closed schema ignores extra fields", () => {
   assert.strictEqual(od.node.latest, "2.0.0");
 });
 
+
+const validList = {node: [{version: "1.0", requested_version: "latest", active: true, installed: true}]};
+test("malformed outdated records cannot mark tools up to date", () => {
+  for (const bad of [{node: "invalid"}, {error: "unavailable"}, {node: {}}, {node: {latest: []}}, {node: {latest: ""}}]) {
+    assert.strictEqual(Model.buildModel(validList, bad), null);
+  }
+  assert.strictEqual(Model.buildModel(validList, {}).outdatedCount, 0);
+});
+test("rejects malformed versions and collection overflow without truncation", () => {
+  for (const bad of [[], [null], [{version: 123}], [{version: "1", active: "true"}],
+      [{version: "x".repeat(129), active: true}], Array(17).fill({version: "1", active: true})]) {
+    assert.strictEqual(Model.parseMiseList({node: bad}), null);
+  }
+  assert.strictEqual(Model.parseMiseOutdated(Object.fromEntries(Array.from({length: 65}, (_, i) => ["t" + i, {latest: "2"}]))), null);
+});
+test("rejects excessive nesting, metadata size, node counts and nonfinite numbers", () => {
+  assert.strictEqual(Model.parseJsonObject('{"v":' + '['.repeat(9) + '0' + ']'.repeat(9) + '}'), null);
+  assert.strictEqual(Model.parseJsonObject('{"v":1e999}'), null);
+  assert.strictEqual(Model.parseJsonObject(JSON.stringify({v: "x".repeat(4097)})), null);
+  assert.strictEqual(Model.parseJsonObject(JSON.stringify({v: Array(8192).fill(1)})), null);
+  assert.deepStrictEqual(Model.parseJsonObject('{"v":"[\\\"{"}'), {v: '["{'});
+});
+test("rejects control and bidi characters but keeps plain-text markup inert", () => {
+  for (const latest of ["2\n0", "2\u202e0", "2\u00000"]) {
+    assert.strictEqual(Model.parseMiseOutdated({node: {latest}}), null);
+  }
+  assert.strictEqual(Model.parseMiseOutdated({node: {latest: "<img src=x>"}}).node.latest, "<img src=x>");
+});

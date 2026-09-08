@@ -2,7 +2,7 @@
 """Isolate a trusted mise invocation in its own process group.
 
 Invoked as:
-  /usr/bin/python3 /absolute/path/to/supervise.py \
+  /usr/bin/python3 -I -S -B /absolute/path/to/supervise.py \
       TIMEOUT_SEC MAX_BYTES KILL_GRACE_SEC MISE_PATH -- mise-args...
 
 Never searches PATH, never starts a shell, never runs upgrade/install/use.
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import errno
 import os
+import pwd
 import re
 import select
 import signal
@@ -28,7 +29,8 @@ EXIT_OVERFLOW = 125
 EXIT_SIGNAL = 143
 
 ALLOWED_MISE = "/usr/bin/mise"
-ALLOWED_SUBCOMMANDS = ("--version", "ls", "outdated")
+ALLOWED_COMMANDS = (("--version",), ("ls", "--json", "--current"),
+                    ("outdated", "--bump", "--json"))
 CHUNK = 8192
 STDERR_CAP = 200
 REAP_TIMEOUT_SEC = 2.0
@@ -159,34 +161,50 @@ def parse_argv(argv):
         fail(EXIT_USAGE, "missing mise args")
     if not is_trusted_mise(mise_path):
         fail(EXIT_BAD_PATH, "untrusted mise path")
-    head = mise_args[0]
-    if head not in ALLOWED_SUBCOMMANDS:
+    if tuple(mise_args) not in ALLOWED_COMMANDS:
         fail(EXIT_USAGE, "forbidden mise subcommand")
     return timeout_sec, max_bytes, grace_sec, mise_path, mise_args
 
 
 def open_trusted_mise_fd():
-    if not path_chain_is_trusted(ALLOWED_MISE):
-        fail(EXIT_BAD_PATH, "untrusted mise path")
+    """Keep the root-owned parent chain open through the final executable open."""
+    parent = None
+    fd = None
     try:
-        fd = os.open(ALLOWED_MISE, os.O_RDONLY | os.O_NOFOLLOW)
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        parent = os.open("/", directory_flags)
+        if not component_is_trusted(os.fstat(parent), expect_dir=True):
+            raise PermissionError("untrusted root")
+        for name in ("usr", "bin"):
+            child = os.open(name, directory_flags, dir_fd=parent)
+            os.close(parent)
+            parent = child
+            if not component_is_trusted(os.fstat(parent), expect_dir=True):
+                raise PermissionError("untrusted parent")
+        fd = os.open("mise", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                     dir_fd=parent)
+        if not component_is_trusted(os.fstat(fd), expect_dir=False):
+            raise PermissionError("untrusted executable")
+        os.set_blocking(fd, True)
+        return fd
     except OSError:
-        fail(EXIT_BAD_PATH, "failed to open mise")
-    try:
-        st = os.fstat(fd)
-    except OSError:
-        try:
+        if fd is not None:
             os.close(fd)
-        except OSError:
-            pass
-        fail(EXIT_BAD_PATH, "failed to open mise")
-    if not component_is_trusted(st, expect_dir=False):
-        try:
-            os.close(fd)
-        except OSError:
-            pass
         fail(EXIT_BAD_PATH, "untrusted mise path")
-    return fd
+    finally:
+        if parent is not None:
+            os.close(parent)
+
+
+def mise_environment():
+    """No ambient credentials, loader hooks, interpreter paths or proxies."""
+    env = {"HOME": pwd.getpwuid(os.getuid()).pw_dir, "PATH": "/usr/bin:/bin",
+           "LANG": "C.UTF-8", "MISE_MINIMUM_RELEASE_AGE": "0"}
+    for key in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"):
+        value = os.environ.get(key, "")
+        if value.startswith("/"):
+            env[key] = value
+    return env
 
 
 def spawn_bound_mise(fd, mise_args, grace_sec):
@@ -200,6 +218,8 @@ def spawn_bound_mise(fd, mise_args, grace_sec):
         start_new_session=True,
         close_fds=True,
         pass_fds=(fd,),
+        env=mise_environment(),
+        cwd=pwd.getpwuid(os.getuid()).pw_dir,
     )
     try:
         pidfd = os.pidfd_open(proc.pid)
@@ -253,43 +273,51 @@ def leader_is_certainly_exited(pidfd):
 
 
 def pgid_has_live_members(pgid):
-    """Return (has_live, certain). /proc observation errors are not 'no members'."""
+    """Bound the /proc scan; incomplete observation requests conservative cleanup."""
     if pgid is None:
         return False, False
+    uncertain = False
+    deadline = time.monotonic() + 0.2
     try:
-        names = os.listdir("/proc")
+        with os.scandir("/proc") as entries:
+            for count, entry in enumerate(entries):
+                if count >= 65536 or time.monotonic() >= deadline:
+                    return False, False
+                if not entry.name.isdigit():
+                    continue
+                fd = None
+                try:
+                    fd = os.open(entry.path + "/stat", os.O_RDONLY | os.O_NOFOLLOW
+                                 | os.O_NONBLOCK | os.O_CLOEXEC)
+                    raw = os.read(fd, 4097)
+                    if len(raw) > 4096:
+                        uncertain = True
+                        continue
+                except FileNotFoundError:
+                    continue
+                except OSError as exc:
+                    if exc.errno != errno.ENOENT:
+                        uncertain = True
+                    continue
+                finally:
+                    if fd is not None:
+                        os.close(fd)
+                text = raw.decode("ascii", "replace")
+                end = text.rfind(")")
+                rest = text[end + 2:].split() if end >= 0 else []
+                if len(rest) < 3:
+                    uncertain = True
+                    continue
+                try:
+                    member_pgid = int(rest[2])
+                except ValueError:
+                    uncertain = True
+                    continue
+                if member_pgid == pgid and rest[0] != "Z":
+                    return True, True
     except OSError:
         return False, False
-    uncertain = False
-    for name in names:
-        if not name.isdigit():
-            continue
-        try:
-            with open("/proc/%s/stat" % name, "r", encoding="ascii", errors="replace") as fh:
-                text = fh.read()
-        except FileNotFoundError:
-            continue
-        except OSError as exc:
-            if getattr(exc, "errno", None) == errno.ENOENT:
-                continue
-            uncertain = True
-            continue
-        rparen = text.rfind(")")
-        if rparen < 0:
-            continue
-        rest = text[rparen + 2 :].split()
-        if len(rest) < 3:
-            continue
-        state = rest[0]
-        try:
-            member_pgid = int(rest[2])
-        except ValueError:
-            continue
-        if member_pgid == pgid and state != "Z":
-            return True, True
-    if uncertain:
-        return False, False
-    return False, True
+    return False, not uncertain
 
 
 def group_needs_kill(pidfd, pgid):
@@ -420,7 +448,11 @@ def supervise_child(proc, pidfd, max_bytes, timeout_sec, grace_sec, dest=None):
                     break
                 time.sleep(min(0.2, remaining))
             if not signaled:
-                if not reap_proc(proc):
+                # The leader may exit successfully with descendants still alive.
+                # Keep its identity unreaped until the whole group is cleaned up.
+                if group_needs_kill(pidfd, proc.pid):
+                    terminate_group(proc, pidfd, grace_sec)
+                elif not reap_proc(proc):
                     fail(1, "failed to reap mise process")
     except Exception:
         terminate_group(proc, pidfd, grace_sec)

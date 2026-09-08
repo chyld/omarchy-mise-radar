@@ -19,7 +19,7 @@ spec.loader.exec_module(supervise)
 
 
 def run_helper(args, timeout=20, env=None):
-    cmd = [PYTHON, HELPER] + args
+    cmd = [PYTHON, "-I", "-S", "-B", HELPER] + args
     return subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
@@ -33,6 +33,43 @@ def run_helper(args, timeout=20, env=None):
 class SuperviseTests(unittest.TestCase):
     def setUp(self):
         supervise.stop_reason = None
+
+    def test_rejects_extra_mise_options(self):
+        for args in [["ls", "--json", "--current", "--cd", "/tmp"],
+                     ["outdated", "--bump", "--json", "--raw"], ["--version", "extra"]]:
+            proc = run_helper(["5", "1024", "0.1", MISE, "--"] + args)
+            self.assertEqual(proc.returncode, 2)
+
+    def test_child_environment_drops_credentials_and_runtime_hooks(self):
+        from unittest.mock import patch
+        hostile = {"PATH": "/tmp/hostile", "PYTHONPATH": "/tmp/hostile",
+                   "LD_PRELOAD": "/tmp/hostile.so", "GITHUB_TOKEN": "test-only",
+                   "HTTP_PROXY": "http://example.invalid", "XDG_CACHE_HOME": "/tmp/radar-cache"}
+        with patch.dict(os.environ, hostile):
+            env = supervise.mise_environment()
+        self.assertEqual(env["PATH"], "/usr/bin:/bin")
+        self.assertEqual(env["XDG_CACHE_HOME"], "/tmp/radar-cache")
+        for name in ("PYTHONPATH", "LD_PRELOAD", "GITHUB_TOKEN", "HTTP_PROXY"):
+            self.assertNotIn(name, env)
+
+    def test_successful_leader_does_not_leave_descendants(self):
+        child = subprocess.Popen([PYTHON, "-I", "-S", "-c",
+            "import os,time; pid=os.fork(); "
+            "time.sleep(30) if pid == 0 else None"],
+            start_new_session=True, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        pidfd = os.pidfd_open(child.pid)
+        try:
+            supervise.supervise_child(child, pidfd, 1024, 2, 0.1, dest=bytearray())
+            self.assertEqual(child.returncode, 0)
+            live, certain = supervise.pgid_has_live_members(child.pid)
+            self.assertTrue(certain)
+            self.assertFalse(live)
+        finally:
+            # The test owns this unreaped group if supervision did not finish.
+            if child.returncode is None:
+                supervise.terminate_group(child, None, 0.1)
+
 
     def test_helper_is_absolute(self):
         self.assertTrue(HELPER.startswith("/"))
@@ -524,35 +561,33 @@ class SuperviseTests(unittest.TestCase):
         finally:
             supervise.os.waitid = real_waitid
 
-    def test_pgid_has_live_members_listdir_error_is_uncertain(self):
-        real_listdir = supervise.os.listdir
+    def test_pgid_has_live_members_scandir_error_is_uncertain(self):
+        real_scandir = supervise.os.scandir
 
         def boom(_path):
             raise OSError(errno.EIO, "I/O error")
 
-        supervise.os.listdir = boom
+        supervise.os.scandir = boom
         try:
             has_live, certain = supervise.pgid_has_live_members(os.getpgrp())
             self.assertFalse(certain)
         finally:
-            supervise.os.listdir = real_listdir
+            supervise.os.scandir = real_scandir
 
     def test_pgid_stat_read_error_is_uncertain(self):
-        import builtins
-
-        real_open = builtins.open
+        real_open = supervise.os.open
 
         def fake_open(path, *a, **k):
             if isinstance(path, str) and path.startswith("/proc/") and path.endswith("/stat"):
                 raise OSError(errno.EACCES, "Permission denied")
             return real_open(path, *a, **k)
 
-        supervise.open = fake_open
+        supervise.os.open = fake_open
         try:
             has_live, certain = supervise.pgid_has_live_members(os.getpgrp())
             self.assertFalse(certain)
         finally:
-            del supervise.open
+            supervise.os.open = real_open
 
     def test_pgid_observation_error_requires_cleanup(self):
         child = subprocess.Popen(
@@ -578,18 +613,18 @@ class SuperviseTests(unittest.TestCase):
                     break
                 time.sleep(0.01)
             self.assertTrue(certain and exited, "child did not exit")
-            real_listdir = supervise.os.listdir
+            real_scandir = supervise.os.scandir
 
             def boom(_path):
                 raise OSError(errno.EIO, "I/O error")
 
-            supervise.os.listdir = boom
+            supervise.os.scandir = boom
             try:
                 has_live, live_certain = supervise.pgid_has_live_members(child.pid)
                 self.assertFalse(live_certain)
                 self.assertTrue(supervise.group_needs_kill(pidfd, child.pid))
             finally:
-                supervise.os.listdir = real_listdir
+                supervise.os.scandir = real_scandir
         finally:
             try:
                 os.close(pidfd)

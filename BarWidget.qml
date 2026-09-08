@@ -2,20 +2,26 @@ import QtQuick
 import Quickshell
 import qs.Commons
 import qs.Ui
+import "." as Backend
 
 BarWidget {
   id: root
   moduleName: "chyld.mise-radar"
 
-  readonly property var miseService: bar && bar.shell
-    ? bar.shell.serviceFor("chyld.mise-radar") : null
+  // Share one backend across monitors without depending on the bar's shell
+  // facade, which cannot expose plugin services under replacement bars.
+  readonly property var miseService: Backend.MiseService
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool loading: miseService ? miseService.loading : true
   readonly property int outdatedCount: miseService ? miseService.outdatedCount : 0
   readonly property bool hasError: miseService ? miseService.errorMessage !== "" : false
-  readonly property bool stale: root.outdatedCount > 0 && !root.loading && !root.hasError
+  readonly property bool stale: root.outdatedCount > 0
   readonly property bool popoutSwitchClosing: panelLoader.item
     ? panelLoader.item.popoutSwitchClosing === true : false
+
+  property string serviceSubscription: ""
+  Component.onCompleted: serviceSubscription = miseService.acquire()
+  Component.onDestruction: miseService.release(serviceSubscription)
 
   function injectPanel() {
     var target = panelLoader.item
@@ -81,65 +87,37 @@ BarWidget {
         id: radar
         readonly property color ink: root.stale ? Color.urgent : button.foreground
 
-        Repeater {
-          model: 2
-          Rectangle {
-            anchors.centerIn: parent
-            width: radar.width * (index === 0 ? 0.52 : 1)
-            height: width
-            radius: width / 2
-            color: "transparent"
-            border.color: radar.ink
-            border.width: 1
-            opacity: index === 0 ? 0.45 : 0.9
-          }
+        Rectangle {
+          anchors.centerIn: parent
+          width: Math.min(parent.width, parent.height) - 1
+          height: width
+          radius: width / 2
+          color: "transparent"
+          border.color: radar.ink
+          border.width: 1.25
+          antialiasing: true
         }
 
         Rectangle {
-          anchors.horizontalCenter: parent.horizontalCenter
-          anchors.verticalCenter: parent.verticalCenter
-          width: 1
-          height: parent.height
-          color: radar.ink
-          opacity: 0.22
-        }
-
-        Rectangle {
-          anchors.horizontalCenter: parent.horizontalCenter
-          anchors.verticalCenter: parent.verticalCenter
-          width: parent.width
-          height: 1
-          color: radar.ink
-          opacity: 0.22
-        }
-
-        Rectangle {
-          width: 1
-          height: parent.height * 0.5
+          width: 1.25
+          height: parent.height * 0.39
+          radius: width / 2
           color: radar.ink
           x: parent.width / 2 - width / 2
           y: parent.height / 2 - height
           transformOrigin: Item.Bottom
-          rotation: 38
-          opacity: 0.95
+          rotation: 42
+          antialiasing: true
         }
 
         Rectangle {
-          width: 2
-          height: 2
-          radius: 1
+          width: 2.5
+          height: width
+          radius: width / 2
           color: radar.ink
-          anchors.centerIn: parent
-        }
-
-        Rectangle {
-          visible: root.outdatedCount > 0 && !root.loading && !root.hasError
-          width: 3
-          height: 3
-          radius: 1.5
-          color: radar.ink
-          x: parent.width * 0.66
-          y: parent.height * 0.22
+          x: parent.width * 0.30 - width / 2
+          y: parent.height * 0.65 - height / 2
+          antialiasing: true
         }
 
       }
