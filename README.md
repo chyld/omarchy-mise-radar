@@ -6,7 +6,7 @@ Agent harnesses move every week. A stale Claude, Codex, or OpenCode pin can mean
 
 This plugin never upgrades, installs, or writes config.
 
-## New in 1.1.13
+## New in 1.2.0
 
 - A minimal radar icon with a thin ring, sweep line, and signal dot.
 - Omarchy 4.0.3 and PeekBar compatibility through one shared internal service.
