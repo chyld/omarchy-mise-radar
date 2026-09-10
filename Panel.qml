@@ -60,7 +60,7 @@ Panel {
           Text {
             textFormat: Text.PlainText
             text: "mise radar"
-            color: root.barForeground
+            color: Color.popups.text
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.body
             font.bold: true
@@ -70,7 +70,7 @@ Panel {
             textFormat: Text.PlainText
             visible: root.service && root.service.lastChecked !== ""
             text: root.service ? "last successful check " + root.service.lastChecked : ""
-            color: root.barForeground
+            color: Color.popups.text
             opacity: 0.45
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.bodySmall
@@ -92,7 +92,7 @@ Panel {
           visible: root.service && !root.service.loading && root.service.toolRows.length === 0 && root.service.errorMessage === ""
           textFormat: Text.PlainText
           text: "No tools configured"
-          color: root.barForeground
+          color: Color.popups.text
           opacity: 0.6
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.bodySmall
@@ -102,7 +102,7 @@ Panel {
           visible: root.service && root.service.loading
           textFormat: Text.PlainText
           text: "Loading…"
-          color: root.barForeground
+          color: Color.popups.text
           opacity: 0.6
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.bodySmall
@@ -122,7 +122,7 @@ Panel {
               width: parent.width * 0.40
               textFormat: Text.PlainText
               text: "tool"
-              color: root.barForeground
+              color: Color.popups.text
               opacity: 0.45
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -131,7 +131,7 @@ Panel {
               width: parent.width * 0.20
               textFormat: Text.PlainText
               text: "requested"
-              color: root.barForeground
+              color: Color.popups.text
               opacity: 0.45
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -140,7 +140,7 @@ Panel {
               width: parent.width * 0.20
               textFormat: Text.PlainText
               text: "installed"
-              color: root.barForeground
+              color: Color.popups.text
               opacity: 0.45
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -149,7 +149,7 @@ Panel {
               width: parent.width * 0.20
               textFormat: Text.PlainText
               text: "latest"
-              color: root.barForeground
+              color: Color.popups.text
               opacity: 0.45
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -176,7 +176,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.name
                   elide: Text.ElideRight
-                  color: root.barForeground
+                  color: Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.bodySmall
                   font.bold: true
@@ -186,7 +186,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.requested
                   elide: Text.ElideRight
-                  color: root.barForeground
+                  color: Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.bodySmall
                 }
@@ -195,7 +195,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.current
                   elide: Text.ElideRight
-                  color: root.barForeground
+                  color: Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.bodySmall
                 }
@@ -204,7 +204,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.latest !== "" ? modelData.latest : modelData.current
                   elide: Text.ElideRight
-                  color: modelData.outdated ? Color.accent : root.barForeground
+                  color: modelData.outdated ? Color.accent : Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.bodySmall
                   font.bold: modelData.outdated

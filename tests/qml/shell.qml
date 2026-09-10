@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import qs.Commons
 import "plugin" as Backend
 
 Scope {
@@ -40,6 +41,41 @@ Scope {
     }
     return null
   }
+  function checkPopupTheme(widget) {
+    var popup = panelFor(widget)
+    var texts = []
+    function collect(item) {
+      if ("text" in item && "textFormat" in item) texts.push(item)
+      var children = item.children || []
+      for (var i = 0; i < children.length; i++) collect(children[i])
+    }
+    for (var i = 0; i < popup.resources.length; i++) {
+      var resource = popup.resources[i]
+      if ("focusTarget" in resource && resource.focusTarget) collect(resource.focusTarget)
+    }
+    check(texts.length > 10, "popup text items found")
+    var saved = Color.shellValues
+    // Bar/wallpaper foreground can be dark while popup text must stay light.
+    // Update the real Color singleton in this private test process only.
+    var palettes = [
+      {"bar.text": "#282020", "popups.background": "#282020", "popups.text": "#fff1d2"},
+      {"bar.text": "#fff1d2", "popups.background": "#fff1d2", "popups.text": "#282020"}
+    ]
+    for (var j = 0; j < palettes.length; j++) {
+      Color.shellValues = palettes[j]
+      var checked = 0
+      for (var k = 0; k < texts.length; k++) {
+        var item = texts[k]
+        if (["mise radar", "tool", "requested", "installed", "latest", "Loading…", "No tools configured"].indexOf(item.text) >= 0
+            || item.text.indexOf("last successful check ") === 0) {
+          check(Qt.colorEqual(item.color, palettes[j]["popups.text"]), "popup text follows theme: " + item.text)
+          checked++
+        }
+      }
+      check(checked >= 8, "header and status theme coverage")
+    }
+    Color.shellValues = saved
+  }
   Component.onCompleted: {
     check(!service.polling && !periodicTimerRunning(), "idle before first consumer")
     check(service.versionCheckTimeoutMs === Number(Quickshell.env("RADAR_TEST_PROBE_MS")), "version budget matches Python supervisor")
@@ -73,6 +109,8 @@ Scope {
       } else if (phase === 1) {
         check(service.errorMessage === "" && service.outdatedCount === 1, "successful refresh")
         check(panelFor(widgetB).service.toolRows[0].latest === "2.0", "second popup receives result")
+        checkPopupTheme(widgetA)
+        checkPopupTheme(widgetB)
         snapshot = JSON.stringify(service.toolRows)
         checked = service.lastChecked
         phase = 2
@@ -106,7 +144,7 @@ Scope {
         phase = 12
       } else if (phase === 12 && !service.loading) {
         check(service.errorMessage === "" && service.outdatedCount === 1, "re-enable refreshes successfully")
-        console.log("PASS service errors, snapshots, popup injection, shared lifecycle, cancellation, re-enable, timeout budgets")
+        console.log("PASS service errors, snapshots, popup injection, shared lifecycle, cancellation, re-enable, timeout budgets, popup theme changes")
         Qt.quit()
       }
     }
