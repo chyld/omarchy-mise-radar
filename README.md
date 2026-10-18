@@ -6,16 +6,15 @@ Agent harnesses move every week. A stale Claude, Codex, or OpenCode pin can mean
 
 This plugin never upgrades, installs, or writes config.
 
-## New in 1.2.0
+## New in 1.3.0
 
-- A minimal radar icon with a thin ring, sweep line, and signal dot.
-- Omarchy 4.0.3 and PeekBar compatibility through one shared internal service.
-- Last successful results stay visible when a refresh fails; polling stops
-  when the last widget is removed.
-- Strict response validation, bounded output, isolated Python execution,
-  and cleanup of owned child processes.
-- Regression tests for the data model, process supervisor, and real QML
-  service/popup integration across multiple widgets.
+- Works with the agent tool list Omarchy now ships in
+  `/etc/mise/conf.d/omarchy-tools.toml`. Tools there install lazily on first
+  run, and before 1.3.0 a single not-yet-installed tool made every check fail
+  with "mise outdated returned invalid tool data".
+- Configured tools that are not installed yet are listed below your installed
+  tools, dimmed, marked "missing", with the version mise would install. They
+  never count as behind, so they cannot turn the radar red.
 
 ## Install
 
@@ -51,6 +50,7 @@ creates no separate persistent cache, credentials, service units, or grants.
 - Quiet radar icon when everything is current
 - Red radar when something is behind
 - Panel table: tool, requested constraint, installed, latest
+- Configured but not-yet-installed tools, dimmed at the bottom of the table
 
 Latest comes from `mise outdated`, including brand-new releases mise would otherwise hide. That matches [mise-versions.jdx.dev](https://mise-versions.jdx.dev) more closely than mise's default delay.
 
