@@ -238,7 +238,7 @@ test("closed schema ignores extra fields", () => {
     }]
   });
   assert.strictEqual(list.length, 1);
-  assert.deepStrictEqual(Object.keys(list[0]).sort(), ["current", "latest", "name", "outdated", "requested"]);
+  assert.deepStrictEqual(Object.keys(list[0]).sort(), ["current", "installed", "latest", "name", "outdated", "requested"]);
   assert.strictEqual(list[0].current, "1.0.0");
   assert.strictEqual(list[0].install_path, undefined);
   const od = Model.parseMiseOutdated({
@@ -275,4 +275,36 @@ test("rejects control and bidi characters but keeps plain-text markup inert", ()
     assert.strictEqual(Model.parseMiseOutdated({node: {latest}}), null);
   }
   assert.strictEqual(Model.parseMiseOutdated({node: {latest: "<img src=x>"}}).node.latest, "<img src=x>");
+});
+test("lists uninstalled tools last without counting them as outdated", () => {
+  const ls = {
+    node: [{ version: "1.0.0", requested_version: "latest", installed: true, active: true }],
+    crush: [{ version: "0.98.1", requested_version: "latest", installed: false, active: false }]
+  };
+  const outdated = {
+    node: { latest: "2.0.0", current: "1.0.0", requested: "latest" },
+    crush: { latest: "0.98.1", current: null, bump: null, requested: "latest" }
+  };
+  assert.deepStrictEqual(Model.buildModel(ls, outdated), {
+    rows: [
+      { name: "node", requested: "latest", current: "1.0.0", latest: "2.0.0", outdated: true, installed: true },
+      { name: "crush", requested: "latest", current: "", latest: "0.98.1", outdated: false, installed: false }
+    ],
+    outdatedCount: 1
+  });
+});
+test("uninstalled tools sort after installed ones and fall back to the ls version", () => {
+  const rows = Model.parseMiseList({
+    ori: [{ version: "0.15.7", requested_version: "latest", installed: false, active: false }],
+    zig: [{ version: "0.14.0", requested_version: "latest", installed: true, active: true }],
+    basecamp: [{ version: "0.13.2", requested_version: "latest", installed: false, active: false }]
+  });
+  assert.deepStrictEqual(rows.map(r => [r.name, r.installed, r.current, r.latest]), [
+    ["zig", true, "0.14.0", ""],
+    ["basecamp", false, "", "0.13.2"],
+    ["ori", false, "", "0.15.7"]
+  ]);
+  const model = Model.mergeToolData(rows, {});
+  assert.strictEqual(model.outdatedCount, 0);
+  assert.strictEqual(model.rows[1].latest, "0.13.2");
 });

@@ -164,6 +164,7 @@ Panel {
               height: rowTexts.implicitHeight + Style.space(4)
               color: modelData.outdated ? Util.alpha(Color.accent, 0.12) : "transparent"
               radius: Style.cornerRadius
+              opacity: modelData.installed === false ? 0.45 : 1
 
               Row {
                 id: rowTexts
@@ -193,7 +194,7 @@ Panel {
                 Text {
                   width: parent.width * 0.20
                   textFormat: Text.PlainText
-                  text: modelData.current
+                  text: modelData.installed === false ? "missing" : modelData.current
                   elide: Text.ElideRight
                   color: Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family

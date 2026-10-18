@@ -78,12 +78,19 @@ function parseMiseList(value) {
       if (!active && entry.active === true) active = entry
       if (!installed && entry.installed === true) installed = entry
     }
+    // Configured but uninstalled tools (e.g. Omarchy's lazy tool list) are
+    // listed after installed ones; their version is the one mise would install.
     var selected = active || installed
-    if (!selected) continue
+    var missing = !selected
+    if (missing) selected = versions[0]
     rows.push({name: name, requested: selected.requested_version || "",
-      current: selected.version, latest: "", outdated: false})
+      current: missing ? "" : selected.version, latest: missing ? selected.version : "",
+      outdated: false, installed: !missing})
   }
-  rows.sort(function(a, b) { return a.name.localeCompare(b.name) })
+  rows.sort(function(a, b) {
+    if (a.installed !== b.installed) return a.installed ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
   return rows
 }
 
@@ -94,7 +101,9 @@ function parseMiseOutdated(value) {
     if (!Object.prototype.hasOwnProperty.call(value, name)) continue
     var entry = value[name]
     if (!isSafeName(name) || !isObject(entry) || !validString(entry.latest, false)
-        || (entry.current !== undefined && !validString(entry.current, true))
+        // Configured but uninstalled tools (e.g. Omarchy's system tool list)
+        // report a null current version.
+        || (entry.current !== undefined && entry.current !== null && !validString(entry.current, true))
         || (entry.requested !== undefined && !validString(entry.requested, true))) return null
     map[name] = {latest: entry.latest}
   }
@@ -105,10 +114,13 @@ function mergeToolData(rows, outdated) {
   if (rows === null || outdated === null) return null
   var count = 0
   var merged = rows.map(function(row) {
-    var behind = Object.prototype.hasOwnProperty.call(outdated, row.name)
+    var installed = row.installed !== false
+    var known = Object.prototype.hasOwnProperty.call(outdated, row.name)
+    var behind = known && installed
     if (behind) count++
     return {name: row.name, requested: row.requested, current: row.current,
-      latest: behind ? outdated[row.name].latest : row.current, outdated: behind}
+      latest: known ? outdated[row.name].latest : (installed ? row.current : row.latest),
+      outdated: behind, installed: installed}
   })
   return {rows: merged, outdatedCount: count}
 }
