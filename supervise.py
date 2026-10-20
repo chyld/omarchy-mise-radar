@@ -15,6 +15,7 @@ import errno
 import os
 import pwd
 import re
+import resource
 import select
 import signal
 import stat
@@ -36,6 +37,10 @@ STDERR_CAP = 200
 REAP_TIMEOUT_SEC = 2.0
 VERSION_TIMEOUT_SEC = 5.0
 VERSION_MAX_BYTES = 4096
+# A cold `mise outdated` needs under 192 MiB of data; per-thread stacks grow
+# with core count. The cap stops a hostile version endpoint from exhausting
+# memory through mise's in-memory response buffering.
+MEMORY_LIMIT_BYTES = 1024 * 1024 * 1024
 VERSION_HEAD_RE = re.compile(r"^(?:mise|[0-9]{4}\.)")
 
 stop_reason = None
@@ -207,6 +212,15 @@ def mise_environment():
     return env
 
 
+def limit_child_memory():
+    """Runs in the forked child before exec; mise and its descendants inherit it."""
+    _soft, hard = resource.getrlimit(resource.RLIMIT_DATA)
+    cap = MEMORY_LIMIT_BYTES
+    if hard != resource.RLIM_INFINITY:
+        cap = min(cap, hard)
+    resource.setrlimit(resource.RLIMIT_DATA, (cap, cap))
+
+
 def spawn_bound_mise(fd, mise_args, grace_sec):
     exec_path = "/proc/self/fd/%d" % fd
     proc = subprocess.Popen(
@@ -220,6 +234,7 @@ def spawn_bound_mise(fd, mise_args, grace_sec):
         pass_fds=(fd,),
         env=mise_environment(),
         cwd=pwd.getpwuid(os.getuid()).pw_dir,
+        preexec_fn=limit_child_memory,
     )
     try:
         pidfd = os.pidfd_open(proc.pid)

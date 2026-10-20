@@ -108,8 +108,11 @@ limited to 64 tools, 16 versions per tool, 128 characters per displayed field,
 eight levels of JSON nesting, and 8,192 values. Malformed or oversized data
 is rejected as a whole, preserving the last successful snapshot. Python
 owns command deadlines and process-group cleanup; QML provides a longer
-fallback watchdog. These limits protect the shell's input boundary; they do
-not impose a byte limit on mise's internal HTTP client.
+fallback watchdog. Mise itself runs under a 1 GiB data-memory limit
+(`RLIMIT_DATA`, inherited by its child processes), so a hostile or broken
+version endpoint cannot exhaust memory through mise's in-memory response
+buffering; a check that hits the limit fails and keeps the last snapshot. A
+cold-cache check normally needs under 192 MiB.
 
 ## Development
 

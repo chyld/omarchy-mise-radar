@@ -71,6 +71,19 @@ class SuperviseTests(unittest.TestCase):
                 supervise.terminate_group(child, None, 0.1)
 
 
+    def test_child_memory_is_capped(self):
+        probe = ("import resource,sys; soft, hard = resource.getrlimit(resource.RLIMIT_DATA)\n"
+                 "assert soft == hard == %d, (soft, hard)\n"
+                 "try:\n    bytearray(%d)\nexcept MemoryError:\n    sys.exit(0)\nsys.exit(3)"
+                 % (supervise.MEMORY_LIMIT_BYTES, supervise.MEMORY_LIMIT_BYTES + (256 << 20)))
+        fd = os.open(PYTHON, os.O_RDONLY | os.O_CLOEXEC)
+        try:
+            proc, pidfd = supervise.spawn_bound_mise(fd, ["-I", "-S", "-c", probe], 0.1)
+            supervise.supervise_child(proc, pidfd, 1024, 10, 0.1, dest=bytearray())
+        finally:
+            os.close(fd)
+        self.assertEqual(proc.returncode, 0)
+
     def test_helper_is_absolute(self):
         self.assertTrue(HELPER.startswith("/"))
         self.assertNotIn("..", HELPER)
