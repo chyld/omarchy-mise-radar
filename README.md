@@ -6,15 +6,13 @@ Agent harnesses move every week. A stale Claude, Codex, or OpenCode pin can mean
 
 This plugin never upgrades, installs, or writes config.
 
-## New in 1.3.0
+## New in 1.3.1
 
-- Works with the agent tool list Omarchy now ships in
-  `/etc/mise/conf.d/omarchy-tools.toml`. Tools there install lazily on first
-  run, and before 1.3.0 a single not-yet-installed tool made every check fail
-  with "mise outdated returned invalid tool data".
-- Configured tools that are not installed yet are listed below your installed
-  tools, dimmed, marked "missing", with the version mise would install. They
-  never count as behind, so they cannot turn the radar red.
+- Mise now runs under a 1 GiB memory limit, so a hostile or broken version
+  endpoint cannot exhaust memory while radar checks for updates. A check that
+  hits the limit fails and keeps the last results.
+- Fixes theme colours after the Qt 6.12 update: the radar turns red again when
+  a tool is behind, and the panel's text and error colours follow the theme.
 
 ## Install
 
