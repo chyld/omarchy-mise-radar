@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "." as Backend
 
@@ -85,7 +86,7 @@ BarWidget {
     iconComponent: Component {
       Item {
         id: radar
-        readonly property color ink: root.stale ? Color.urgent : button.foreground
+        readonly property color ink: root.stale ? Commons.Color.urgent : button.foreground
 
         Rectangle {
           anchors.centerIn: parent

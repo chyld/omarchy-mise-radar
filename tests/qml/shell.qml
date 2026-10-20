@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import qs.Commons as Commons
 import "plugin" as Backend
 
 Scope {
@@ -54,7 +55,7 @@ Scope {
       if ("focusTarget" in resource && resource.focusTarget) collect(resource.focusTarget)
     }
     check(texts.length > 10, "popup text items found")
-    var saved = Color.shellValues
+    var saved = Commons.Color.shellValues
     // Bar/wallpaper foreground can be dark while popup text must stay light.
     // Update the real Color singleton in this private test process only.
     var palettes = [
@@ -62,7 +63,7 @@ Scope {
       {"bar.text": "#fff1d2", "popups.background": "#fff1d2", "popups.text": "#282020"}
     ]
     for (var j = 0; j < palettes.length; j++) {
-      Color.shellValues = palettes[j]
+      Commons.Color.shellValues = palettes[j]
       var checked = 0
       for (var k = 0; k < texts.length; k++) {
         var item = texts[k]
@@ -74,7 +75,7 @@ Scope {
       }
       check(checked >= 8, "header and status theme coverage")
     }
-    Color.shellValues = saved
+    Commons.Color.shellValues = saved
   }
   Component.onCompleted: {
     check(!service.polling && !periodicTimerRunning(), "idle before first consumer")

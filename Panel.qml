@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 Panel {
@@ -60,7 +61,7 @@ Panel {
           Text {
             textFormat: Text.PlainText
             text: "mise radar"
-            color: Color.popups.text
+            color: Commons.Color.popups.text
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.body
             font.bold: true
@@ -70,7 +71,7 @@ Panel {
             textFormat: Text.PlainText
             visible: root.service && root.service.lastChecked !== ""
             text: root.service ? "last successful check " + root.service.lastChecked : ""
-            color: Color.popups.text
+            color: Commons.Color.popups.text
             opacity: 0.45
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.bodySmall
@@ -82,7 +83,7 @@ Panel {
           width: parent.width
           textFormat: Text.PlainText
           text: root.service ? root.service.errorMessage : ""
-          color: Color.urgent
+          color: Commons.Color.urgent
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.WordWrap
@@ -92,7 +93,7 @@ Panel {
           visible: root.service && !root.service.loading && root.service.toolRows.length === 0 && root.service.errorMessage === ""
           textFormat: Text.PlainText
           text: "No tools configured"
-          color: Color.popups.text
+          color: Commons.Color.popups.text
           opacity: 0.6
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.bodySmall
@@ -102,7 +103,7 @@ Panel {
           visible: root.service && root.service.loading
           textFormat: Text.PlainText
           text: "Loading…"
-          color: Color.popups.text
+          color: Commons.Color.popups.text
           opacity: 0.6
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.bodySmall
@@ -122,7 +123,7 @@ Panel {
               width: parent.width * 0.40
               textFormat: Text.PlainText
               text: "tool"
-              color: Color.popups.text
+              color: Commons.Color.popups.text
               opacity: 0.45
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -131,7 +132,7 @@ Panel {
               width: parent.width * 0.20
               textFormat: Text.PlainText
               text: "requested"
-              color: Color.popups.text
+              color: Commons.Color.popups.text
               opacity: 0.45
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -140,7 +141,7 @@ Panel {
               width: parent.width * 0.20
               textFormat: Text.PlainText
               text: "installed"
-              color: Color.popups.text
+              color: Commons.Color.popups.text
               opacity: 0.45
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -149,7 +150,7 @@ Panel {
               width: parent.width * 0.20
               textFormat: Text.PlainText
               text: "latest"
-              color: Color.popups.text
+              color: Commons.Color.popups.text
               opacity: 0.45
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -162,7 +163,7 @@ Panel {
             Rectangle {
               width: parent.width
               height: rowTexts.implicitHeight + Style.space(4)
-              color: modelData.outdated ? Util.alpha(Color.accent, 0.12) : "transparent"
+              color: modelData.outdated ? Util.alpha(Commons.Color.accent, 0.12) : "transparent"
               radius: Style.cornerRadius
               opacity: modelData.installed === false ? 0.45 : 1
 
@@ -177,7 +178,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.name
                   elide: Text.ElideRight
-                  color: Color.popups.text
+                  color: Commons.Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.bodySmall
                   font.bold: true
@@ -187,7 +188,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.requested
                   elide: Text.ElideRight
-                  color: Color.popups.text
+                  color: Commons.Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.bodySmall
                 }
@@ -196,7 +197,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.installed === false ? "missing" : modelData.current
                   elide: Text.ElideRight
-                  color: Color.popups.text
+                  color: Commons.Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.bodySmall
                 }
@@ -205,7 +206,7 @@ Panel {
                   textFormat: Text.PlainText
                   text: modelData.latest !== "" ? modelData.latest : modelData.current
                   elide: Text.ElideRight
-                  color: modelData.outdated ? Color.accent : Color.popups.text
+                  color: modelData.outdated ? Commons.Color.accent : Commons.Color.popups.text
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.bodySmall
                   font.bold: modelData.outdated
